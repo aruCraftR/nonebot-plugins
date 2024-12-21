@@ -5,7 +5,6 @@ import os
 from typing import Any, Callable, Optional, Union
 import yaml
 
-from openai._base_client import log as openai_logger
 from openai import AsyncOpenAI
 
 from .interface import SystemMessage
@@ -160,7 +159,6 @@ class PluginConfig(LLMConfig):
 
     def apply_yaml(self) -> None:
         super().apply_yaml()
-        openai_logger.setLevel(logging.DEBUG)
         if self.bot_name not in self.system_prompts:
             shared.logger.warning(f'全局预设名 {self.bot_name} 未在system_prompts中定义')
             if self.system_prompts:
@@ -320,7 +318,7 @@ class InstanceConfig(LLMConfig):
         if self._async_open_ai is None:
             self._async_open_ai = AsyncOpenAI(
                 base_url=self.openai_api_v1,
-                api_key=''
+                api_key='none'
             )
         return self._async_open_ai
 

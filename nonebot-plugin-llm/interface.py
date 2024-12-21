@@ -2,7 +2,6 @@
 from time import time, asctime
 from typing import Any, Literal, Optional, TYPE_CHECKING
 
-import openai
 from openai.types.chat.chat_completion import ChatCompletion
 
 from . import shared
@@ -114,7 +113,6 @@ def count_token(text: str):
 
 async def request_chat_completion(chat_instance: 'ChatInstance', _override: Optional[list[BaseMessage]] = None) -> tuple[str, int, bool]:
     try:
-        openai.base_url = chat_instance.config.openai_api_v1
         res: ChatCompletion = await chat_instance.config.async_open_ai.chat.completions.create(
             model=chat_instance.config.model_identifier,
             messages=chat_instance.get_chat_messages(_override), # type: ignore
