@@ -1,3 +1,4 @@
+import contextlib
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.rule import Rule
@@ -6,14 +7,13 @@ from . import shared
 
 
 async def forbidden_id(event: MessageEvent) -> bool:
-    try:
+    with contextlib.suppress(ValueError):
         if int(event.get_user_id()) in shared.plugin_config.forbidden_users:
             return False
-    except ValueError:
-        pass
-    if isinstance(event, GroupMessageEvent) and event.group_id in shared.plugin_config.forbidden_groups:
-        return False
-    return True
+    return (
+        not isinstance(event, GroupMessageEvent)
+        or event.group_id not in shared.plugin_config.forbidden_groups
+    )
 
 
 async def forbidden_word(event: MessageEvent) -> bool:
@@ -31,12 +31,12 @@ async def available_message(event: MessageEvent) -> bool:
         shared.logger.info(', '.join(f'{i.type}[{str(i.data)}]' for i in event.message))
     if (not event.get_message()) or (shared.plugin_config.only_text_message and not plaintext):
         if shared.plugin_config.debug:
-            shared.logger.info(f'跳过空消息')
+            shared.logger.info('跳过空消息')
         return False
-    for i in shared.nonebot_config.command_start:
-        if i and plaintext.lstrip().startswith(i):
-            return False
-    return True
+    return not any(
+        i and plaintext.lstrip().startswith(i)
+        for i in shared.nonebot_config.command_start
+    )
 
 
 rule_forbidden_id = Rule(forbidden_id)

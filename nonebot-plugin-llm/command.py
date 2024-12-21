@@ -1,6 +1,7 @@
 
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent, Bot, Message
+from nonebot.adapters.onebot.v11.permission import PRIVATE_FRIEND, GROUP
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
 
@@ -21,9 +22,14 @@ HELP_MSG = \
 {cmd} info chat | *查看当前会话的记录情况
 {cmd} change bot <bot_name> | *更改当前会话的机器人预设为<bot_name>
 {cmd} discard bot <bot_name> | *将当前会话的机器人预设恢复为默认
+{cmd} change model <model_name> | *更改当前会话的模型改为<model_name>
+{cmd} discard model <model_name> | *将当前会话的模型恢复为默认
 [注意: 全局操作仅对已加载的聊天实例生效]
 {cmd} global new | *重置全部会话记录
 {cmd} global info chat | *重置全部会话记录""".format(cmd=CMD_PREFIX)
+
+NORMAL_PERMISSION = PRIVATE_FRIEND | GROUP
+
 
 cmd_help = on_command(
     (CMD_PREFIX, 'help'),
@@ -51,20 +57,21 @@ async def reload_config():
     except Exception as e:
         await cmd_reload.finish(f'LLM插件配置重载失败: {repr(e)}')
     else:
-        await cmd_reload.finish(f'LLM插件配置重载成功')
+        await cmd_reload.finish('LLM插件配置重载成功')
 
 
 cmd_clear_history = on_command(
     (CMD_PREFIX, 'new'),
     aliases={(CMD_PREFIX, 'n')},
-    rule=rule_forbidden_id
+    rule=rule_forbidden_id,
+    permission=NORMAL_PERMISSION
 )
 
 @cmd_clear_history.handle()
 async def clear_history(event: MessageEvent, bot: Bot):
     chat_instance = await get_chat_instance(cmd_clear_history, event, bot)
     chat_instance.clear_history()
-    await cmd_clear_history.finish(f'已清除当前会话的历史记录')
+    await cmd_clear_history.finish('已清除当前会话的历史记录')
 
 
 cmd_global_new = on_command(
@@ -94,8 +101,7 @@ async def change_bot_name(event: MessageEvent, bot: Bot, args: Message = Command
     bot_name = args.extract_plain_text()
     if bot_name not in shared.plugin_config.system_prompts:
         await cmd_change_bot.finish(f'系统提示词预设 {bot_name} 不存在\n当前可用预设: {', '.join(shared.plugin_config.system_prompts.keys())}')
-    chat_instance.config.set_value('bot_name', args.extract_plain_text())
-    chat_instance.config.save_yaml()
+    chat_instance.config.set_value('bot_name', bot_name)
     await cmd_change_bot.finish(f'已切换到系统提示词预设 {bot_name}\n提示词内容: {chat_instance.config.system_prompt}')
 
 
@@ -107,9 +113,38 @@ cmd_discard_bot = on_command(
 
 @cmd_discard_bot.handle()
 async def discard_bot_name(event: MessageEvent, bot: Bot):
-    chat_instance = await get_chat_instance(cmd_change_bot, event, bot)
+    chat_instance = await get_chat_instance(cmd_discard_bot, event, bot)
     chat_instance.config.set_value('bot_name', DEFAULT)
     await cmd_discard_bot.finish(f'已切换到默认系统提示词预设 {chat_instance.config.bot_name}\n提示词内容: {chat_instance.config.system_prompt}')
+
+
+cmd_change_model = on_command(
+    (CMD_PREFIX, 'change', 'model'),
+    aliases={(CMD_PREFIX, 'c', 'm')},
+    permission=SUPERUSER
+)
+
+@cmd_change_model.handle()
+async def change_model_name(event: MessageEvent, bot: Bot, args: Message = CommandArg()):
+    chat_instance = await get_chat_instance(cmd_change_model, event, bot)
+    model_name = args.extract_plain_text()
+    if model_name not in shared.plugin_config.models:
+        await cmd_change_model.finish(f'模型名 {model_name} 不存在\n当前可用模型: {', '.join(shared.plugin_config.models.keys())}')
+    chat_instance.config.set_value('bot_name', model_name)
+    await cmd_change_model.finish(f'已切换到模型 {model_name}\n模型标识名: {chat_instance.config.model_identifier}')
+
+
+cmd_discard_model = on_command(
+    (CMD_PREFIX, 'discard', 'model'),
+    aliases={(CMD_PREFIX, 'd', 'm')},
+    permission=SUPERUSER
+)
+
+@cmd_discard_model.handle()
+async def discard_model_name(event: MessageEvent, bot: Bot):
+    chat_instance = await get_chat_instance(cmd_discard_model, event, bot)
+    chat_instance.config.set_value('model_name', DEFAULT)
+    await cmd_discard_model.finish(f'已切换到默认模型 {chat_instance.config.model_name}\n模型标识名: {chat_instance.config.model_identifier}')
 
 
 cmd_info_chat = on_command(
@@ -120,7 +155,7 @@ cmd_info_chat = on_command(
 
 @cmd_info_chat.handle()
 async def info_chat(event: MessageEvent, bot: Bot):
-    chat_instance = await get_chat_instance(cmd_change_bot, event, bot)
+    chat_instance = await get_chat_instance(cmd_info_chat, event, bot)
     await cmd_info_chat.finish(
         f'对话标识符: {chat_instance.chat_key}\
         \n对话条数: {len(chat_instance.history.chat_history)}\

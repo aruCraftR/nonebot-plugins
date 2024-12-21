@@ -4,6 +4,9 @@ import os
 from typing import Any, Callable, Optional, Union
 import yaml
 
+from openai import AsyncOpenAI
+
+from .interface import SystemMessage
 from . import shared
 
 DEFAULT = 'default'
@@ -11,7 +14,20 @@ DEFAULT = 'default'
 
 class Filter:
     def __init__(self, func) -> None:
-        self.filter: Callable[[Any], bool] = func
+        self.filter: Callable = func
+
+    def get_filtered_value(self, value: list | dict):
+        if isinstance(value, list):
+            return list(filter(self.filter, value))
+        if isinstance(value, dict):
+            {k: v for k, v in value.items() if self.filter(k, v)}
+        return type(value)(filter(self.filter, value))
+
+
+STR_DICT_KV = Filter(lambda k, v: (isinstance(k, str) and isinstance(v, str)))
+INT_LIST = Filter(lambda x: isinstance(x, int))
+NUM_LIST = Filter(lambda x: isinstance(x, (int, float)))
+STR_LIST = Filter(lambda x: isinstance(x, str))
 
 
 class LLMConfig:
@@ -25,10 +41,7 @@ class LLMConfig:
         self.load_yaml()
 
     def get_attr_name(self, attr: str):
-        if self.attr_prefix is None:
-            return attr
-        else:
-            return f'{self.attr_prefix}{attr}'
+        return attr if self.attr_prefix is None else f'{self.attr_prefix}{attr}'
 
     def load_yaml(self) -> None:
         os.makedirs(os.path.split(self.config_path)[0], exist_ok=True)
@@ -60,7 +73,7 @@ class LLMConfig:
                 if (not (use_default or is_default)) and condition is not None:
                     if isinstance(condition, Filter):
                         if value != DEFAULT and isinstance(value, Iterable):
-                            setattr(self, self.get_attr_name(key), type(value)(filter(condition.filter, value))) # type: ignore
+                            setattr(self, self.get_attr_name(key), condition.get_filtered_value(value)) # type: ignore
                             continue
                     else:
                         use_default = not condition(value)
@@ -78,12 +91,13 @@ class LLMConfig:
 class PluginConfig(LLMConfig):
     config_path = Path('data/llm/config.yml')
     config_checkers = {
-        'openai_api_v1': (str, None, ''),
-        'model_identifier': (str, None, ''),
+        'openai_api_v1': (str, None, 'https://api.openai.com/v1'),
+        'models': (dict, STR_DICT_KV, {'ChatGPT-4o': 'gpt-4o'}),
+        'model_name': (str, None, ''),
         'api_timeout': (int, lambda x: x > 0, 60),
         'reply_throttle_time': ((int, float), lambda x: x >= 0, 3),
         'bot_name': (str, None, 'LLM'),
-        'system_prompts': (dict, None, {'LLM': None}),
+        'system_prompts': (dict, STR_DICT_KV, {'LLM': None}),
         'chat_top_p': ((int, float), lambda x: 0 <= x <= 1, 0.95),
         'chat_temperature': ((int, float), lambda x: 0 <= x <= 1, 0.75),
         'chat_presence_penalty': ((int, float), lambda x: -2 <= x <= 2, 0.8),
@@ -102,16 +116,17 @@ class PluginConfig(LLMConfig):
         'auto_save_interval': ((int, float), lambda x: x > 0, 5),
         'provide_username': (bool, None, True),
         'provide_local_time': (bool, None, True),
-        'forbidden_users': (list, Filter(lambda x: isinstance(x, int)), []),
-        'forbidden_groups': (list, Filter(lambda x: isinstance(x, int)), []),
-        'forbidden_words': (list, Filter(lambda x: isinstance(x, str)), []),
+        'forbidden_users': (list, INT_LIST, []),
+        'forbidden_groups': (list, INT_LIST, []),
+        'forbidden_words': (list, STR_LIST, []),
         'event_priority': (int, None, 99),
         'block_event': (bool, None, False),
         'debug': (bool, None, False)
     }
 
     openai_api_v1: str
-    model_identifier: str
+    models: dict[str, str]
+    model_name: str
     api_timeout: int
     reply_throttle_time: int | float
     bot_name: str
@@ -152,13 +167,22 @@ class PluginConfig(LLMConfig):
             else:
                 self.set_value('bot_name', self.config_checkers['bot_name'][-1], save=False)
 
+        if self.model_name not in self.models:
+            shared.logger.warning(f'全局模型名 {self.model_name} 未在models中定义')
+            if self.models:
+                model_name = next(iter(self.models.keys()))
+                self.set_value('model_name', model_name, save=False)
+                shared.logger.warning(f'已自动更改为 {bot_name}')
+            else:
+                self.set_value('model_name', self.config_checkers['model_name'][-1], save=False)
+
 
 class InstanceConfig(LLMConfig):
     attr_prefix = '_'
     allow_default = True
     config_checkers = {
         'openai_api_v1': ((DEFAULT, str), None, DEFAULT),
-        'model_identifier': ((DEFAULT, str), None, DEFAULT),
+        'model_name': ((DEFAULT, str), None, DEFAULT),
         'api_timeout': ((DEFAULT, int), lambda x: x > 0, DEFAULT),
         'reply_throttle_time': ((DEFAULT, int, float), lambda x: x >= 0, DEFAULT),
         'bot_name': ((DEFAULT, str), None, DEFAULT),
@@ -189,8 +213,8 @@ class InstanceConfig(LLMConfig):
         return self.get_value('openai_api_v1')
 
     @property
-    def model_identifier(self) -> str:
-        return self.get_value('model_identifier')
+    def model_name(self) -> str:
+        return self.get_value('model_name')
 
     @property
     def api_timeout(self) -> int:
@@ -276,8 +300,30 @@ class InstanceConfig(LLMConfig):
     def system_prompt(self) -> Optional[str]:
         return shared.plugin_config.system_prompts.get(self.bot_name)
 
+    @property
+    def system_message(self) -> Optional[dict[str, str]]:
+        if self.system_prompt is None:
+            return
+        if self._sys_msg_cache is None:
+            self._sys_msg_cache = SystemMessage(self.system_prompt, token_count=0).to_message()
+        return self._sys_msg_cache
+
+    @property
+    def model_identifier(self) -> str:
+        return shared.plugin_config.models.get(self.model_name) # type: ignore
+
+    @property
+    def async_open_ai(self) -> AsyncOpenAI:
+        if self._async_open_ai is None:
+            self._async_open_ai = AsyncOpenAI(
+                base_url=self.openai_api_v1,
+                api_key=''
+            )
+        return self._async_open_ai
+
     def __init__(self, chat_key: str) -> None:
         self.chat_key = chat_key
+        self._sys_msg_cache = None
         super().__init__()
 
     def apply_yaml(self) -> None:
@@ -285,6 +331,14 @@ class InstanceConfig(LLMConfig):
         if self.system_prompt is None:
             shared.logger.warning(f'{self.chat_key}配置中的预设名 {self.bot_name} 未在system_prompts中定义, 已自动回退为默认值')
             self.set_value('bot_name', DEFAULT, save=False)
+        if self.model_identifier is None:
+            shared.logger.warning(f'{self.chat_key}配置中的预设名 {self.model_name} 未在models中定义, 已自动回退为默认值')
+            self.set_value('model_name', DEFAULT, save=False)
+        self._async_open_ai = None
+
+    def set_value(self, key: str, value: Any, *, save=True):
+        super().set_value(key, value, save=save)
+        self._sys_msg_cache = None
 
 
 shared.plugin_config = PluginConfig()

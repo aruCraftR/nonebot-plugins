@@ -1,9 +1,10 @@
 
 from nonebot.plugin import on_message, on_notice
 from nonebot.adapters.onebot.v11 import MessageEvent, Bot, GroupIncreaseNoticeEvent
+from nonebot.adapters.onebot.v11.permission import PRIVATE_FRIEND, GROUP
 
 from .chat import get_chat_instance, get_chat_instance_directly
-from .interface import request_chat_completion
+from .interface import request_chat_completion, UserMessage
 from .utils import uniform_chat_text, get_user_name
 from .rule import rule_forbidden_id, rule_forbidden_word, rule_available_message
 
@@ -11,6 +12,7 @@ from . import shared
 
 message = on_message(
     rule=rule_forbidden_id & rule_forbidden_word & rule_available_message,
+    permission=PRIVATE_FRIEND | GROUP,
     priority=shared.plugin_config.event_priority,
     block=shared.plugin_config.block_event
 )
@@ -56,9 +58,9 @@ async def message_handler(event: MessageEvent, bot: Bot):
     if shared.plugin_config.debug:
         shared.logger.info(f'正在准备为 {sender_name} 生成消息')
 
-    response, success = await request_chat_completion(chat_instance)
+    response, completion_token_count, success = await request_chat_completion(chat_instance)
     if success:
-        chat_instance.record_chat_history(response)
+        chat_instance.record_chat_history(response, token_count=completion_token_count)
     await message.finish(response)
 
 
@@ -82,8 +84,14 @@ async def _(event: GroupIncreaseNoticeEvent, bot: Bot):
     if shared.plugin_config.debug:
         shared.logger.info(f'正在准备为 {user_name} 生成欢迎消息')
 
-    response, success = await request_chat_completion(chat_instance, [chat_instance.history.gen_text_json(
-        f'欢迎 {user_name} 加入群聊', ''
-    )])
+    response, completion_token_count, success = await request_chat_completion(
+        chat_instance,
+        [
+            UserMessage(
+                f'欢迎 {user_name} 加入群聊', '',
+                provide_local_time=chat_instance.config.provide_local_time
+            )
+        ]
+    )
     if success:
         await message.finish(response)
