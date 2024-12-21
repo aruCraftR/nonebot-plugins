@@ -79,11 +79,11 @@ class BaseMessage:
 
 
 class SystemMessage(BaseMessage):
-    _role = 'system'
+    role = 'system'
 
 
 class UserMessage(BaseMessage):
-    _role = 'user'
+    role = 'user'
 
     def __init__(self, content: str, name: str, *, provide_username=False, provide_local_time=False) -> None:
         super().__init__(content, name, token_count=0)
@@ -93,7 +93,7 @@ class UserMessage(BaseMessage):
 
 
 class ModelMessage(BaseMessage):
-    _role = 'assistant'
+    role = 'assistant'
 
     def __init__(self, content: str, name: Optional[str] = None, *, token_count: int | None = None, provide_local_time=False) -> None:
         super().__init__(content, name, token_count=0)

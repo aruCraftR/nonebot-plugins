@@ -9,7 +9,7 @@ from time import asctime, time
 from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent, GroupMessageEvent, Bot
 
-from .interface import SystemMessage, BaseMessage, UserMessage, ModelMessage
+from .interface import BaseMessage, UserMessage, ModelMessage
 from .utils import get_chat_type, get_user_name
 from .config import InstanceConfig
 from . import shared
@@ -165,7 +165,7 @@ class ChatHistory:
             while version := pickle_data.get('VERSION', 0) < VERSION:
                 pickle_data = upgrader_list[version](pickle_data)
         except Exception as e:
-            shared.logger.warning(f'{self.instance.chat_key} 的历史记录转换失败:\n{repr(e)}')
+            shared.logger.warning(f'{self.instance.chat_key} 的历史记录转换失败(v{version}): {repr(e)}')
         else:
             for k in self.data_keys:
                 value = pickle_data.get(k)
