@@ -20,7 +20,7 @@ class Filter:
         if isinstance(value, list):
             return list(filter(self.filter, value))
         if isinstance(value, dict):
-            {k: v for k, v in value.items() if self.filter(k, v)}
+            return {k: v for k, v in value.items() if self.filter(k, v)}
         return type(value)(filter(self.filter, value))
 
 
