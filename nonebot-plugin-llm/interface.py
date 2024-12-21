@@ -1,11 +1,13 @@
 
 from time import time, asctime
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, TYPE_CHECKING
 
 from openai.types.chat.chat_completion import ChatCompletion
 
-from .chat import ChatInstance
 from . import shared
+
+if TYPE_CHECKING:
+    from .chat import ChatInstance
 
 
 class BaseMessage:
@@ -109,7 +111,7 @@ def count_token(text: str):
     return len(shared.tiktoken.encode(text))
 
 
-async def request_chat_completion(chat_instance: ChatInstance, _override: Optional[list[BaseMessage]] = None) -> tuple[str, int, bool]:
+async def request_chat_completion(chat_instance: 'ChatInstance', _override: Optional[list[BaseMessage]] = None) -> tuple[str, int, bool]:
     try:
         res: ChatCompletion = await chat_instance.config.async_open_ai.chat.completions.create(
             model=chat_instance.config.model_identifier,
