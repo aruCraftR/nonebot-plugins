@@ -172,7 +172,7 @@ class PluginConfig(LLMConfig):
             if self.models:
                 model_name = next(iter(self.models.keys()))
                 self.set_value('model_name', model_name, save=False)
-                shared.logger.warning(f'已自动更改为 {bot_name}')
+                shared.logger.warning(f'已自动更改为 {model_name}')
             else:
                 self.set_value('model_name', self.config_checkers['model_name'][-1], save=False)
 
