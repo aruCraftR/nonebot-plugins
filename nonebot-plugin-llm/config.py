@@ -335,9 +335,6 @@ class InstanceConfig(LLMConfig):
             shared.logger.warning(f'{self.chat_key}配置中的预设名 {self.model_name} 未在models中定义, 已自动回退为默认值')
             self.set_value('model_name', DEFAULT, save=False)
         self._async_open_ai = None
-
-    def set_value(self, key: str, value: Any, *, save=True):
-        super().set_value(key, value, save=save)
         self._sys_msg_cache = None
 
 
