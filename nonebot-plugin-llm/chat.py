@@ -162,8 +162,10 @@ class ChatHistory:
             except Exception:
                 shared.logger.warning(f'{self.instance.chat_key} 的历史记录加载失败')
         try:
-            while version := pickle_data.get('VERSION', 0) < VERSION:
+            version: int = pickle_data.get('VERSION', 0)
+            while version < VERSION:
                 pickle_data = upgrader_list[version](pickle_data)
+                version += 1
         except Exception as e:
             shared.logger.warning(f'{self.instance.chat_key} 的历史记录转换失败(v{version}): {repr(e)}')
         else:
