@@ -180,9 +180,9 @@ class ChatHistory:
             messages = []
         if use_history:
             histories = sorted(chain(self.other_history, self.chat_history), key=lambda x: x.timestamp)
-            messages.extend(await (await i.to_message() for i in histories))
+            messages.extend([await i.to_message() for i in histories])
         if extra_messages is not None:
-            messages.extend(await (await i.to_message() for i in extra_messages))
+            messages.extend([await i.to_message() for i in extra_messages])
         return messages
 
     def add_other_history(self, text: str, sender: str, auto_remove=True, *, token_count: Optional[int] = None):
