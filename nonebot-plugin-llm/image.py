@@ -18,7 +18,7 @@ class QQImage:
 
     async def get_image(self) -> ImageFile:
         if self._image is None:
-            self._image = Image.open(await self._get())
+            self._image = Image.open(BytesIO(await self._get()))
         return self._image
 
     async def _get(self) -> bytes:
