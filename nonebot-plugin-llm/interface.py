@@ -116,14 +116,13 @@ class UserImageMessage(UserMessage):
 
     @property
     async def content(self) -> list[dict[str, Any]]:
-        content_list = [{"type": "text", "text": self._content}]
-        content_list.extend(await (
-            {
-                "type": "image_url",
-                "image_url": {"url": await i.get_base64()}
-            } for i in self.images
-        ))
-        return content_list
+        return [
+            {"type": "text", "text": self._content},
+            *[
+                {"type": "image_url", "image_url": {"url": await i.get_base64()}}
+                for i in self.images
+            ],
+        ]
 
     def recount_token(self):
         """UserImageMessage暂时仅用作过渡消息, 无需计算token占用量"""
