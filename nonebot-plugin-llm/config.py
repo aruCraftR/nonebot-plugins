@@ -91,7 +91,7 @@ class LLMConfig:
             commented_map.yaml_set_comment_before_after_key(key)
             if checker.comment is None:
                 continue
-            commented_map.yaml_set_comment_before_after_key(key, checker.comment)
+            commented_map.yaml_set_comment_before_after_key(key, checker.comment, after='-----')
         return commented_map
 
     def get_kv(self) -> Generator[Tuple[str, Any]]:
