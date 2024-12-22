@@ -130,7 +130,6 @@ class PluginConfig(LLMConfig):
         'models': Item(dict, STR_DICT_KV, {'ChatGPT-4o': 'gpt-4o'}),
         'text_model_name': Item(str, None, 'ChatGPT-4o'),
         'vision_model_name': Item(str, None, 'ChatGPT-4o'),
-        'image_handling_mode': Item(str, None, 'ChatGPT-4o'),
         'api_timeout': Item(int, lambda x: x > 0, 60),
         'reply_throttle_time': Item((int, float), lambda x: x >= 0, 3),
         'bot_name': Item(str, None, 'LLM'),
@@ -216,14 +215,14 @@ class PluginConfig(LLMConfig):
             else:
                 self.set_value('text_model_name', self.config_checkers['text_model_name'][-1], save=False)
 
-        if self.vision_model_prompt not in self.models:
-            shared.logger.warning(f'全局视觉模型名 {self.vision_model_prompt} 未在models中定义')
+        if self.vision_model_name not in self.models:
+            shared.logger.warning(f'全局视觉模型名 {self.vision_model_name} 未在models中定义')
             if self.models:
                 model_name = next(iter(self.models.keys()))
-                self.set_value('vision_model_prompt', model_name, save=False)
+                self.set_value('vision_model_name', model_name, save=False)
                 shared.logger.warning(f'已自动更改为 {model_name}')
             else:
-                self.set_value('vision_model_prompt', self.config_checkers['vision_model_prompt'][-1], save=False)
+                self.set_value('vision_model_name', self.config_checkers['vision_model_name'][-1], save=False)
 
 
 class InstanceConfig(LLMConfig):
