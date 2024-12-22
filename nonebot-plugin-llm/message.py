@@ -4,7 +4,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent, Bot, GroupIncreaseNoticeEv
 from nonebot.adapters.onebot.v11.permission import PRIVATE_FRIEND, GROUP
 
 from .chat import ChatInstance, get_chat_instance, get_chat_instance_directly
-from .interface import UserImageMessage, request_chat_completion, UserMessage
+from .interface import UserImageMessage, request_chat_completion, UserMessage, SystemMessage
 from .utils import UniformedMessage, uniform_chat_text, get_user_name
 from .rule import rule_forbidden_id, rule_forbidden_word, rule_available_message
 
@@ -126,6 +126,8 @@ async def summary_and_record_other_image(chat_instance: ChatInstance, uniformed_
         chat_instance.record_other_history(response, sender_name, token_count=completion_token_count)
 
 
+summary_image_system_msg = SystemMessage('1.回答时有条理。2.回答时尽可能不要进行可能性较低的猜测。3.总结图像时必须包含图像中的所有主要文本内容。4.回答时必须使用中文', token_count=0)
+
 async def summary_image(chat_instance: ChatInstance, uniformed_chat: UniformedMessage) -> tuple[str, int, bool]:
     if shared.plugin_config.debug:
         shared.logger.info(f'正在总结图像 {uniformed_chat.image_urls}')
@@ -133,6 +135,7 @@ async def summary_image(chat_instance: ChatInstance, uniformed_chat: UniformedMe
     response, completion_token_count, success = await request_chat_completion(
         chat_instance,
         [
+            summary_image_system_msg,
             UserImageMessage(
                 uniformed_chat.image_urls,
                 chat_instance.config.vision_model_prompt
