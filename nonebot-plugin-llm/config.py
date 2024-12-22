@@ -108,6 +108,8 @@ class LLMConfig:
             if value == DEFAULT:
                 if not self.allow_default:
                     self.back_to_default(key, item)
+                    continue
+                setattr(self, self.get_attr_name(key), value)
                 continue
             elif item.types is not None:
                 if not isinstance(value, item.types):
