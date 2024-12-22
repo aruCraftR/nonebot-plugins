@@ -211,19 +211,19 @@ class PluginConfig(LLMConfig):
             shared.logger.warning(f'全局文本模型名 {self.text_model_name} 未在models中定义')
             if self.models:
                 model_name = next(iter(self.models.keys()))
-                self.set_value('model_name', model_name, save=False)
+                self.set_value('text_model_name', model_name, save=False)
                 shared.logger.warning(f'已自动更改为 {model_name}')
             else:
-                self.set_value('model_name', self.config_checkers['model_name'][-1], save=False)
+                self.set_value('text_model_name', self.config_checkers['text_model_name'][-1], save=False)
 
         if self.vision_model_prompt not in self.models:
             shared.logger.warning(f'全局视觉模型名 {self.vision_model_prompt} 未在models中定义')
             if self.models:
                 model_name = next(iter(self.models.keys()))
-                self.set_value('model_name', model_name, save=False)
+                self.set_value('vision_model_prompt', model_name, save=False)
                 shared.logger.warning(f'已自动更改为 {model_name}')
             else:
-                self.set_value('model_name', self.config_checkers['model_name'][-1], save=False)
+                self.set_value('vision_model_prompt', self.config_checkers['vision_model_prompt'][-1], save=False)
 
 
 class InstanceConfig(LLMConfig):
