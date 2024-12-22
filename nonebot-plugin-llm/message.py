@@ -141,7 +141,7 @@ async def summary_image(chat_instance: ChatInstance, uniformed_chat: UniformedMe
                 chat_instance.config.vision_model_prompt
             )
         ],
-        use_history=False, use_system_message=False, use_vision_model=True
+        use_history=False, use_system_message=False, use_vision_model=True, extra_kwargs={'max_tokens': 1024}
     )
     response = f'一张图像, 其中的内容: {response}'
     return response, completion_token_count, success

@@ -133,12 +133,13 @@ def count_token(text: str):
     return len(shared.tiktoken.encode(text))
 
 
-async def request_chat_completion(chat_instance: 'ChatInstance', extra_messages: Optional[list[BaseMessage]] = None, *, use_vision_model=False, use_system_message=True, use_history=True) -> tuple[str, int, bool]:
+async def request_chat_completion(chat_instance: 'ChatInstance', extra_messages: Optional[list[BaseMessage]] = None, *, use_vision_model=False, use_system_message=True, use_history=True, extra_kwargs: dict[str, Any] = {}) -> tuple[str, int, bool]:
     try:
         res: ChatCompletion = await chat_instance.config.async_open_ai.chat.completions.create(
             model=chat_instance.config.vision_model_identifier if use_vision_model else chat_instance.config.text_model_identifier,
             messages=await chat_instance.get_chat_messages(extra_messages, use_system_message=use_system_message, use_history=use_history), # type: ignore
-            **chat_instance.config.chat_completion_kwargs
+            **chat_instance.config.chat_completion_kwargs,
+            **extra_kwargs
         )
         content = res.choices[0].message.content.strip()
         if content.startswith('['):
