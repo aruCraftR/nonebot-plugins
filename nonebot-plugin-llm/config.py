@@ -236,6 +236,7 @@ class InstanceConfig(LLMConfig):
         'api_timeout': Item(int, lambda x: x > 0, DEFAULT),
         'reply_throttle_time': Item((int, float), lambda x: x >= 0, DEFAULT),
         'bot_name': Item(str, None, DEFAULT),
+        'vision_model_prompt': Item(str, None, DEFAULT),
         'chat_top_p': Item((int, float), lambda x: 0 <= x <= 1, DEFAULT),
         'chat_temperature': Item((int, float), lambda x: 0 <= x <= 1, DEFAULT),
         'chat_presence_penalty': Item((int, float), lambda x: -2 <= x <= 2, DEFAULT),
