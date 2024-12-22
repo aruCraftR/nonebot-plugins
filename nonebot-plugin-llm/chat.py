@@ -4,7 +4,7 @@ from pathlib import Path
 import pickle
 from itertools import chain
 from typing import Optional
-from time import asctime, time
+from time import time
 
 from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent, GroupMessageEvent, Bot
@@ -24,41 +24,40 @@ from . import shared
 chat_instances: dict[str, 'ChatInstance'] = {}
 
 class ChatInstance:
-    def __init__(self, chat_key: str, is_group: bool) -> None:
-        self.name = None
+    def __init__(self, chat_key: str, chat_name: str, is_group: bool) -> None:
+        self.name = chat_name
         self.is_group = is_group
         self.last_msg_time: int | float = 0
         self.chat_key = chat_key
-        self.config = InstanceConfig(chat_key)
+        self.config = InstanceConfig(chat_key, chat_name)
         self.history = ChatHistory(self)
         chat_instances[self.chat_key] = self
 
     @classmethod
     async def async_init(cls, bot: Bot, event: MessageEvent, chat_key: str, is_group: bool):
-        self = cls(chat_key, is_group)
         if isinstance(event, GroupMessageEvent):
-            self.name = (await bot.get_group_info(group_id=event.group_id))['group_name']
+            name = (await bot.get_group_info(group_id=event.group_id))['group_name']
         elif isinstance(event, PrivateMessageEvent):
-            self.name = await self.get_user_name(event, bot)
-        return self
+            name = await get_user_name(event, bot, event.user_id) or '未知'
+        return cls(chat_key, name, is_group)
 
     async def get_user_name(self, event: MessageEvent, bot: Bot):
         if self.is_group or self.name is None:
-            return await get_user_name(event=event, bot=bot, user_id=event.user_id) or '未知'
+            return await get_user_name(event, bot, event.user_id) or '未知'
         else:
             return self.name
 
     def record_chat_history(self, text: str, sender: Optional[str] = None, auto_remove=True, *, token_count: Optional[int] = None):
         self.history.add_chat_history(text, sender, auto_remove, token_count=token_count)
 
-    def record_other_history(self, text: str, sender: str, auto_remove=True):
-        self.history.add_other_history(text, sender, auto_remove)
+    def record_other_history(self, text: str, sender: str, auto_remove=True, *, token_count: Optional[int] = None):
+        self.history.add_other_history(text, sender, auto_remove, token_count=token_count)
 
     def clear_history(self):
         self.history = ChatHistory(self, False)
 
-    def get_chat_messages(self, _override: Optional[list[BaseMessage]] = None) -> list[dict[str, str]]:
-        return self.history.get_chat_messages(_override)
+    def get_chat_messages(self, extra: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True) -> list[dict[str, str]]:
+        return self.history.get_chat_messages(extra, use_system_message=use_system_message, use_history=use_history)
 
     @property
     def enabled(self):
@@ -100,7 +99,6 @@ def history_data_0_to_1(data: dict) -> dict:
         new_other_history.append(msg)
     data['chat_history'] = new_chat_history
     data['other_history'] = new_other_history
-    data['VERSION'] = 1
     return data
 
 upgrader_list = [
@@ -174,23 +172,26 @@ class ChatHistory:
                 if value is not None:
                     setattr(self, k, value)
 
-    def get_chat_messages(self, _override: Optional[list[BaseMessage]] = None) -> list[dict[str, str]]:
-        system_message = self.instance.config.system_message
-        messages = [system_message] if system_message else []
-        if _override is None:
+    def get_chat_messages(self, extra_messages: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True) -> list[dict[str, str]]:
+        if use_system_message:
+            system_message = self.instance.config.system_message
+            messages = [system_message] if system_message else []
+        else:
+            messages = []
+        if use_history:
             histories = sorted(chain(self.other_history, self.chat_history), key=lambda x: x.timestamp)
             messages.extend(i.to_message() for i in histories)
-        else:
-            messages.extend(i.to_message() for i in _override)
+        if extra_messages is not None:
+            messages.extend(i.to_message() for i in extra_messages)
         return messages
 
-    def add_other_history(self, text: str, sender: str, auto_remove=True):
+    def add_other_history(self, text: str, sender: str, auto_remove=True, *, token_count: Optional[int] = None):
         self.changed = True
         if self.last_other_text == text:
             self.other_history[-1].timestamp = time()
         else:
             self.last_other_text = text
-            message = UserMessage(text, sender, provide_username=self.instance.config.provide_username, provide_local_time=self.instance.config.provide_local_time)
+            message = UserMessage(text, sender, token_count=token_count, provide_username=self.instance.config.provide_username, provide_local_time=self.instance.config.provide_local_time)
             self.other_history_token_count += message.token_count
             self.other_history.append(message)
             if not auto_remove:
@@ -207,7 +208,7 @@ class ChatHistory:
             if sender is None:
                 message = ModelMessage(text, token_count=token_count, provide_local_time=self.instance.config.provide_local_time)
             else:
-                message = UserMessage(text, sender, provide_username=self.instance.config.provide_username, provide_local_time=self.instance.config.provide_local_time)
+                message = UserMessage(text, sender, token_count=token_count, provide_username=self.instance.config.provide_username, provide_local_time=self.instance.config.provide_local_time)
             self.chat_history_token_count += message.token_count
             self.chat_history.append(message)
             if not auto_remove:

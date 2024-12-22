@@ -1,5 +1,5 @@
 
-from typing import Union, Optional
+from typing import NamedTuple, Union, Optional
 
 from nonebot.adapters.onebot.v11 import Event, MessageEvent, PrivateMessageEvent, GroupMessageEvent, GroupIncreaseNoticeEvent, Bot
 
@@ -27,42 +27,51 @@ async def get_user_name(event: Union[MessageEvent, GroupIncreaseNoticeEvent], bo
     return user_name
 
 
-async def uniform_chat_text(event: MessageEvent, bot: Bot, use_raw=False) -> tuple[str, bool]:
+class UniformedMessage(NamedTuple):
+    wake_up: bool
+    text: Optional[str]
+    image_urls: list[str]
+
+
+async def uniform_chat_text(event: MessageEvent, bot: Bot, use_raw=False) -> UniformedMessage:
     """将部分类型的消息段转化为利于理解的纯文本并拼接"""
     # if not isinstance(event, GroupMessageEvent):
     #     return event.raw_message if use_raw else event.get_plaintext(), False
 
     if use_raw:
-        return event.raw_message, '@全体成员' in event.raw_message
+        return UniformedMessage('@全体成员' in event.raw_message, event.raw_message, [])
 
     wake_up = False
-    msg = []
+    msgs = []
+    img_urls = []
     for seg in event.message:
         match seg.type:
             case 'text':    # 纯文本
-                msg.append(seg.data.get('text', ''))
+                msgs.append(seg.data.get('text', ''))
             case 'at':      # @
                 target = seg.data.get('qq')
                 if not target:
                     continue
                 if target == 'all':
-                    msg.append('@全体成员')
+                    msgs.append('@全体成员')
                     wake_up = True
                 else:
                     user_name = await get_user_name(event=event, bot=bot, user_id=int(target))
                     if user_name:
-                        msg.append(f'@{user_name}')
+                        msgs.append(f'@{user_name}')
             case 'face':     # Emoji
                 if name := EMOJI_NAME.get(seg.data.get('id')): # type: ignore
-                    msg.append(name)
+                    msgs.append(name)
             case 'image':    # 图像表情
                 if summary := seg.data.get('summary'):
                     if summary != '[动画表情]':
-                        msg.append(summary)
+                        msgs.append(summary)
+                elif url := seg.data.get('url'):
+                    img_urls.append(url)
             case 'poke':     # 戳一戳
                 if name := seg.data.get('name'):
-                    msg.append(name)
-    return ''.join(msg), wake_up
+                    msgs.append(name)
+    return UniformedMessage(wake_up, ''.join(msgs), img_urls)
 
 
 async def get_chat_type(event: MessageEvent) -> tuple[str, Optional[bool]]:

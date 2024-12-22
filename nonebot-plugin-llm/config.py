@@ -1,16 +1,19 @@
 from collections.abc import Iterable
-import logging
 from pathlib import Path
 import os
-from typing import Any, Callable, Optional, Union
-import yaml
+from typing import Any, Callable, Generator, Literal, NamedTuple, Optional, Tuple
 
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
 from openai import AsyncOpenAI
 
 from .interface import SystemMessage
 from . import shared
 
 DEFAULT = 'default'
+
+yaml = YAML()
+yaml.allow_unicode = True
 
 
 class Filter:
@@ -31,11 +34,20 @@ NUM_LIST = Filter(lambda x: isinstance(x, (int, float)))
 STR_LIST = Filter(lambda x: isinstance(x, str))
 
 
+class Item(NamedTuple):
+    types: type | Tuple[type, ...]
+    condition: Optional[Callable | Filter]
+    default: Any
+    comment: Optional[str] = None
+
+
+
 class LLMConfig:
     attr_prefix = None
     allow_default = False
     config_path: Path
-    config_checkers: 'dict[str, tuple[Union[tuple, type], Optional[Union[Callable, Filter]], Any]]'
+    config_checkers: dict[str, Item]
+    start_comment: Optional[str]
 
     def __init__(self) -> None:
         self.yaml: dict = None # type: ignore
@@ -48,7 +60,7 @@ class LLMConfig:
         os.makedirs(os.path.split(self.config_path)[0], exist_ok=True)
         if self.config_path.is_file():
             with open(self.config_path, mode='r', encoding='utf-8') as f:
-                self.yaml = yaml.load(f, Loader=yaml.FullLoader)
+                self.yaml = yaml.load(f)
         else:
             self.yaml = {}
         self.apply_yaml()
@@ -56,30 +68,51 @@ class LLMConfig:
 
     def save_yaml(self):
         with open(self.config_path, mode='w', encoding='utf-8') as f:
-            yaml.dump(self.get_dict(), f, allow_unicode=True, sort_keys=False)
+            yaml.dump(self.get_commented_map(), f)
+
+    def get_commented_map(self) -> CommentedMap:
+        commented_map = CommentedMap(self.get_kv())
+        if self.start_comment is not None:
+            commented_map.yaml_set_start_comment(self.start_comment)
+        for key, checker in self.config_checkers.items():
+            if checker.comment is None:
+                continue
+            commented_map.yaml_add_eol_comment(key, f'# {checker.comment}')
+        return commented_map
+
+    def get_kv(self) -> Generator[Tuple[str, Any]]:
+        return ((k, getattr(self, self.get_attr_name(k))) for k in self.config_checkers.keys())
 
     def get_dict(self) -> dict[str, Any]:
         return {k: getattr(self, self.get_attr_name(k)) for k in self.config_checkers.keys()}
 
     def apply_yaml(self) -> None:
-        for key, (types, condition, default) in self.config_checkers.items():
+        for key, item in self.config_checkers.items():
             value = self.yaml.get(key)
             use_default = False
             if value is None:
                 use_default = True
             else:
-                is_default = self.allow_default and value == DEFAULT
-                if not (is_default or types is None):
-                    use_default = not isinstance(value, types)
-                if (not (use_default or is_default)) and condition is not None:
-                    if isinstance(condition, Filter):
+                is_default = False
+                if value == DEFAULT:
+                    if self.allow_default:
+                        is_default = True
+                    else:
+                        use_default = True
+                elif (not is_default) and (item.types is not None):
+                    use_default = not isinstance(value, item.types)
+                if (
+                    not (use_default or is_default)
+                    and item.condition is not None
+                ):
+                    if isinstance(item.condition, Filter):
                         if value != DEFAULT and isinstance(value, Iterable):
-                            setattr(self, self.get_attr_name(key), condition.get_filtered_value(value)) # type: ignore
+                            setattr(self, self.get_attr_name(key), item.condition.get_filtered_value(value)) # type: ignore
                             continue
                     else:
-                        use_default = not condition(value)
+                        use_default = not item.condition(value)
             if use_default:
-                setattr(self, self.get_attr_name(key), default)
+                setattr(self, self.get_attr_name(key), item.default)
             else:
                 setattr(self, self.get_attr_name(key), value)
 
@@ -90,48 +123,54 @@ class LLMConfig:
 
 
 class PluginConfig(LLMConfig):
+    start_comment = 'LLM插件全局配置文件'
     config_path = Path('data/llm/config.yml')
     config_checkers = {
-        'openai_api_v1': (str, None, 'https://api.openai.com/v1'),
-        'models': (dict, STR_DICT_KV, {'ChatGPT-4o': 'gpt-4o'}),
-        'model_name': (str, None, ''),
-        'api_timeout': (int, lambda x: x > 0, 60),
-        'reply_throttle_time': ((int, float), lambda x: x >= 0, 3),
-        'bot_name': (str, None, 'LLM'),
-        'system_prompts': (dict, STR_DICT_KV, {'LLM': None}),
-        'chat_top_p': ((int, float), lambda x: 0 <= x <= 1, 0.95),
-        'chat_temperature': ((int, float), lambda x: 0 <= x <= 1, 0.75),
-        'chat_presence_penalty': ((int, float), lambda x: -2 <= x <= 2, 0.8),
-        'chat_frequency_penalty': ((int, float), lambda x: -2 <= x <= 2, 0.8),
-        'reply_on_private': (bool, None, True),
-        'reply_on_name_mention': (bool, None, True),
-        'reply_on_at': (bool, None, True),
-        'reply_on_welcome': (bool, None, False),
-        'use_group_card': (bool, None, True),
-        'only_text_message': (bool, None, False),
-        'record_other_context': (bool, None, True),
-        'record_other_context_token_limit': (int, lambda x: x > 0, 2048),
-        'record_chat_context': (bool, None, True),
-        'record_chat_context_token_limit': (int, lambda x: x > 0, 2048),
-        'auto_save_history': (bool, None, True),
-        'auto_save_interval': ((int, float), lambda x: x > 0, 5),
-        'provide_username': (bool, None, True),
-        'provide_local_time': (bool, None, True),
-        'forbidden_users': (list, INT_LIST, []),
-        'forbidden_groups': (list, INT_LIST, []),
-        'forbidden_words': (list, STR_LIST, []),
-        'event_priority': (int, None, 99),
-        'block_event': (bool, None, False),
-        'debug': (bool, None, False)
+        'openai_api_v1': Item(str, None, 'https://api.openai.com/v1'),
+        'models': Item(dict, STR_DICT_KV, {'ChatGPT-4o': 'gpt-4o'}),
+        'text_model_name': Item(str, None, 'ChatGPT-4o'),
+        'vision_model_name': Item(str, None, 'ChatGPT-4o'),
+        'image_handling_mode': Item(str, None, 'ChatGPT-4o'),
+        'api_timeout': Item(int, lambda x: x > 0, 60),
+        'reply_throttle_time': Item((int, float), lambda x: x >= 0, 3),
+        'bot_name': Item(str, None, 'LLM'),
+        'system_prompts': Item(dict, STR_DICT_KV, {'LLM': None}),
+        'vision_model_prompt': Item(str, None, '请提取此图像中的文字并列出, 同时单独总结该图像的场景等除文本外的视觉内容'),
+        'chat_top_p': Item((int, float), lambda x: 0 <= x <= 1, 0.95),
+        'chat_temperature': Item((int, float), lambda x: 0 <= x <= 1, 0.75),
+        'chat_presence_penalty': Item((int, float), lambda x: -2 <= x <= 2, 0.8),
+        'chat_frequency_penalty': Item((int, float), lambda x: -2 <= x <= 2, 0.8),
+        'reply_on_private': Item(bool, None, True),
+        'reply_on_name_mention': Item(bool, None, True),
+        'reply_on_at': Item(bool, None, True),
+        'reply_on_welcome': Item(bool, None, False),
+        'use_group_card': Item(bool, None, True),
+        'only_text_message': Item(bool, None, False),
+        'record_other_context': Item(bool, None, True),
+        'record_other_context_token_limit': Item(int, lambda x: x > 0, 2048),
+        'record_chat_context': Item(bool, None, True),
+        'record_chat_context_token_limit': Item(int, lambda x: x > 0, 2048),
+        'auto_save_history': Item(bool, None, True),
+        'auto_save_interval': Item((int, float), lambda x: x > 0, 5),
+        'provide_username': Item(bool, None, True),
+        'provide_local_time': Item(bool, None, True),
+        'forbidden_users': Item(list, INT_LIST, []),
+        'forbidden_groups': Item(list, INT_LIST, []),
+        'forbidden_words': Item(list, STR_LIST, []),
+        'event_priority': Item(int, None, 99),
+        'block_event': Item(bool, None, False),
+        'debug': Item(bool, None, False)
     }
 
     openai_api_v1: str
     models: dict[str, str]
-    model_name: str
+    text_model_name: str
+    vision_model_name: str
     api_timeout: int
     reply_throttle_time: int | float
     bot_name: str
     system_prompts: dict[str, str]
+    vision_model_prompt: str
     chat_top_p: int | float
     chat_temperature: int | float
     chat_presence_penalty: int | float
@@ -168,8 +207,17 @@ class PluginConfig(LLMConfig):
             else:
                 self.set_value('bot_name', self.config_checkers['bot_name'][-1], save=False)
 
-        if self.model_name not in self.models:
-            shared.logger.warning(f'全局模型名 {self.model_name} 未在models中定义')
+        if self.text_model_name not in self.models:
+            shared.logger.warning(f'全局文本模型名 {self.text_model_name} 未在models中定义')
+            if self.models:
+                model_name = next(iter(self.models.keys()))
+                self.set_value('model_name', model_name, save=False)
+                shared.logger.warning(f'已自动更改为 {model_name}')
+            else:
+                self.set_value('model_name', self.config_checkers['model_name'][-1], save=False)
+
+        if self.vision_model_prompt not in self.models:
+            shared.logger.warning(f'全局视觉模型名 {self.vision_model_prompt} 未在models中定义')
             if self.models:
                 model_name = next(iter(self.models.keys()))
                 self.set_value('model_name', model_name, save=False)
@@ -179,30 +227,32 @@ class PluginConfig(LLMConfig):
 
 
 class InstanceConfig(LLMConfig):
+    start_comment = '用于 {name} 会话的配置文件覆盖\n设为 default 的项将使用全局配置文件中的值'
     attr_prefix = '_'
     allow_default = True
     config_checkers = {
-        'openai_api_v1': ((DEFAULT, str), None, DEFAULT),
-        'model_name': ((DEFAULT, str), None, DEFAULT),
-        'api_timeout': ((DEFAULT, int), lambda x: x > 0, DEFAULT),
-        'reply_throttle_time': ((DEFAULT, int, float), lambda x: x >= 0, DEFAULT),
-        'bot_name': ((DEFAULT, str), None, DEFAULT),
-        'chat_top_p': ((DEFAULT, int, float), lambda x: 0 <= x <= 1, DEFAULT),
-        'chat_temperature': ((DEFAULT, int, float), lambda x: 0 <= x <= 1, DEFAULT),
-        'chat_presence_penalty': ((DEFAULT, int, float), lambda x: -2 <= x <= 2, DEFAULT),
-        'chat_frequency_penalty': ((DEFAULT, int, float), lambda x: -2 <= x <= 2, DEFAULT),
-        'reply_on_private': ((DEFAULT, bool), None, DEFAULT),
-        'reply_on_name_mention': ((DEFAULT, bool), None, DEFAULT),
-        'reply_on_at': ((DEFAULT, bool), None, DEFAULT),
-        'reply_on_welcome': ((DEFAULT, bool), None, DEFAULT),
-        'record_other_context': ((DEFAULT, bool), None, DEFAULT),
-        'record_other_context_token_limit': ((DEFAULT, int), lambda x: x > 0, DEFAULT),
-        'record_chat_context': ((DEFAULT, bool), None, DEFAULT),
-        'record_chat_context_token_limit': ((DEFAULT, int), lambda x: x > 0, DEFAULT),
-        'auto_save_history': ((DEFAULT, bool), None, DEFAULT),
-        'auto_save_interval': ((DEFAULT, int, float), lambda x: x > 0, DEFAULT),
-        'provide_username': ((DEFAULT, bool), None, DEFAULT),
-        'provide_local_time': ((DEFAULT, bool), None, DEFAULT)
+        'openai_api_v1': Item(str, None, DEFAULT),
+        'text_model_name': Item(str, None, DEFAULT),
+        'vision_model_name': Item(str, None, DEFAULT),
+        'api_timeout': Item(int, lambda x: x > 0, DEFAULT),
+        'reply_throttle_time': Item((int, float), lambda x: x >= 0, DEFAULT),
+        'bot_name': Item(str, None, DEFAULT),
+        'chat_top_p': Item((int, float), lambda x: 0 <= x <= 1, DEFAULT),
+        'chat_temperature': Item((int, float), lambda x: 0 <= x <= 1, DEFAULT),
+        'chat_presence_penalty': Item((int, float), lambda x: -2 <= x <= 2, DEFAULT),
+        'chat_frequency_penalty': Item((int, float), lambda x: -2 <= x <= 2, DEFAULT),
+        'reply_on_private': Item(bool, None, DEFAULT),
+        'reply_on_name_mention': Item(bool, None, DEFAULT),
+        'reply_on_at': Item(bool, None, DEFAULT),
+        'reply_on_welcome': Item(bool, None, DEFAULT),
+        'record_other_context': Item(bool, None, DEFAULT),
+        'record_other_context_token_limit': Item(int, lambda x: x > 0, DEFAULT),
+        'record_chat_context': Item(bool, None, DEFAULT),
+        'record_chat_context_token_limit': Item(int, lambda x: x > 0, DEFAULT),
+        'auto_save_history': Item(bool, None, DEFAULT),
+        'auto_save_interval': Item((int, float), lambda x: x > 0, DEFAULT),
+        'provide_username': Item(bool, None, DEFAULT),
+        'provide_local_time': Item(bool, None, DEFAULT)
     }
 
     def get_value(self, key: str) -> Any:
@@ -214,8 +264,12 @@ class InstanceConfig(LLMConfig):
         return self.get_value('openai_api_v1')
 
     @property
-    def model_name(self) -> str:
-        return self.get_value('model_name')
+    def text_model_name(self) -> str:
+        return self.get_value('text_model_name')
+
+    @property
+    def vision_model_name(self) -> str:
+        return self.get_value('vision_model_name')
 
     @property
     def api_timeout(self) -> int:
@@ -228,6 +282,10 @@ class InstanceConfig(LLMConfig):
     @property
     def bot_name(self) -> str:
         return self.get_value('bot_name')
+
+    @property
+    def vision_model_prompt(self) -> str:
+        return self.get_value('vision_model_prompt')
 
     @property
     def chat_top_p(self) -> int | float:
@@ -310,8 +368,12 @@ class InstanceConfig(LLMConfig):
         return self._sys_msg_cache
 
     @property
-    def model_identifier(self) -> str:
-        return shared.plugin_config.models.get(self.model_name) # type: ignore
+    def text_model_identifier(self) -> str:
+        return shared.plugin_config.models.get(self.text_model_name) # type: ignore
+
+    @property
+    def vision_model_identifier(self) -> str:
+        return shared.plugin_config.models.get(self.vision_model_name) # type: ignore
 
     @property
     def async_open_ai(self) -> AsyncOpenAI:
@@ -322,9 +384,23 @@ class InstanceConfig(LLMConfig):
             )
         return self._async_open_ai
 
-    def __init__(self, chat_key: str) -> None:
+    @property
+    def chat_completion_kwargs(self):
+        if self._chat_completion_kwargs is None:
+            self._chat_completion_kwargs = {
+                # 'max_tokens': self.chat_max_tokens,
+                'temperature': self.chat_temperature,
+                'top_p': self.chat_top_p,
+                'frequency_penalty': self.chat_frequency_penalty,
+                'presence_penalty': self.chat_presence_penalty,
+                'timeout': self.api_timeout
+            }
+        return self._chat_completion_kwargs
+
+    def __init__(self, chat_key: str, chat_name: str) -> None:
         self.chat_key = chat_key
-        self._sys_msg_cache = None
+        self.chat_name = chat_name
+        self.start_comment = self.start_comment.format(name=self.chat_name)
         super().__init__()
 
     def apply_yaml(self) -> None:
@@ -332,11 +408,16 @@ class InstanceConfig(LLMConfig):
         if self.system_prompt is None:
             shared.logger.warning(f'{self.chat_key}配置中的预设名 {self.bot_name} 未在system_prompts中定义, 已自动回退为默认值')
             self.set_value('bot_name', DEFAULT, save=False)
-        if self.model_identifier is None:
-            shared.logger.warning(f'{self.chat_key}配置中的预设名 {self.model_name} 未在models中定义, 已自动回退为默认值')
-            self.set_value('model_name', DEFAULT, save=False)
+        if self.text_model_name is None:
+            shared.logger.warning(f'{self.chat_key}配置中的预设名 {self.text_model_name} 未在models中定义, 已自动回退为默认值')
+            self.set_value('text_model_name', DEFAULT, save=False)
+        if self.vision_model_name is None:
+            shared.logger.warning(f'{self.chat_key}配置中的预设名 {self.vision_model_name} 未在models中定义, 已自动回退为默认值')
+            self.set_value('vision_model_name', DEFAULT, save=False)
         self._async_open_ai = None
         self._sys_msg_cache = None
+        self._chat_completion_kwargs = None
+
 
 
 shared.plugin_config = PluginConfig()

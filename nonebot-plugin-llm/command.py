@@ -15,6 +15,8 @@ CMD_PREFIX = 'llm'
 
 HELP_MSG = \
 """LLM插件命令列表(标有*的为管理员命令)
+[...]: 选择其一 | <...>: 填入文本
+
 {cmd} new | 重置当前会话记录
 
 {cmd} help | *获取帮助信息
@@ -22,8 +24,8 @@ HELP_MSG = \
 {cmd} info chat | *查看当前会话的记录情况
 {cmd} change bot <bot_name> | *更改当前会话的机器人预设为<bot_name>
 {cmd} discard bot <bot_name> | *将当前会话的机器人预设恢复为默认
-{cmd} change model <model_name> | *更改当前会话的模型改为<model_name>
-{cmd} discard model <model_name> | *将当前会话的模型恢复为默认
+{cmd} change [text/vision] model <model_name> | *更改当前会话的文本或视觉模型改为<model_name>
+{cmd} discard [text/vision] model <model_name> | *将当前会话的文本或视觉模型恢复为默认
 [注意: 全局操作仅对已加载的聊天实例生效]
 {cmd} global new | *重置全部会话记录
 {cmd} global info chat | *重置全部会话记录""".format(cmd=CMD_PREFIX)
@@ -118,33 +120,62 @@ async def discard_bot_name(event: MessageEvent, bot: Bot):
     await cmd_discard_bot.finish(f'已切换到默认系统提示词预设 {chat_instance.config.bot_name}\n提示词内容: {chat_instance.config.system_prompt}')
 
 
-cmd_change_model = on_command(
-    (CMD_PREFIX, 'change', 'model'),
-    aliases={(CMD_PREFIX, 'c', 'm')},
+cmd_change_text_model = on_command(
+    (CMD_PREFIX, 'change', 'text', 'model'),
+    aliases={(CMD_PREFIX, 'c', 't', 'm')},
     permission=SUPERUSER
 )
 
-@cmd_change_model.handle()
-async def change_model_name(event: MessageEvent, bot: Bot, args: Message = CommandArg()):
-    chat_instance = await get_chat_instance(cmd_change_model, event, bot)
+@cmd_change_text_model.handle()
+async def change_text_model_name(event: MessageEvent, bot: Bot, args: Message = CommandArg()):
+    chat_instance = await get_chat_instance(cmd_change_text_model, event, bot)
     model_name = args.extract_plain_text()
     if model_name not in shared.plugin_config.models:
-        await cmd_change_model.finish(f'模型名 {model_name} 不存在\n当前可用模型: {', '.join(shared.plugin_config.models.keys())}')
-    chat_instance.config.set_value('bot_name', model_name)
-    await cmd_change_model.finish(f'已切换到模型 {model_name}\n模型标识名: {chat_instance.config.model_identifier}')
+        await cmd_change_text_model.finish(f'模型名 {model_name} 不存在\n当前可用模型: {', '.join(shared.plugin_config.models.keys())}')
+    chat_instance.config.set_value('text_model_name', model_name)
+    await cmd_change_text_model.finish(f'已切换到模型 {model_name}\n模型标识名: {chat_instance.config.text_model_identifier}')
 
 
-cmd_discard_model = on_command(
-    (CMD_PREFIX, 'discard', 'model'),
-    aliases={(CMD_PREFIX, 'd', 'm')},
+cmd_discard_text_model = on_command(
+    (CMD_PREFIX, 'discard', 'text', 'model'),
+    aliases={(CMD_PREFIX, 'd', 't', 'm')},
     permission=SUPERUSER
 )
 
-@cmd_discard_model.handle()
-async def discard_model_name(event: MessageEvent, bot: Bot):
-    chat_instance = await get_chat_instance(cmd_discard_model, event, bot)
-    chat_instance.config.set_value('model_name', DEFAULT)
-    await cmd_discard_model.finish(f'已切换到默认模型 {chat_instance.config.model_name}\n模型标识名: {chat_instance.config.model_identifier}')
+@cmd_discard_text_model.handle()
+async def discard_text_model_name(event: MessageEvent, bot: Bot):
+    chat_instance = await get_chat_instance(cmd_discard_text_model, event, bot)
+    chat_instance.config.set_value('text_model_name', DEFAULT)
+    await cmd_discard_text_model.finish(f'已切换到默认模型 {chat_instance.config.text_model_name}\n模型标识名: {chat_instance.config.text_model_identifier}')
+
+
+cmd_change_vision_model = on_command(
+    (CMD_PREFIX, 'change', 'vision', 'model'),
+    aliases={(CMD_PREFIX, 'c', 'v', 'm')},
+    permission=SUPERUSER
+)
+
+@cmd_change_vision_model.handle()
+async def change_vision_model_name(event: MessageEvent, bot: Bot, args: Message = CommandArg()):
+    chat_instance = await get_chat_instance(cmd_change_vision_model, event, bot)
+    model_name = args.extract_plain_text()
+    if model_name not in shared.plugin_config.models:
+        await cmd_change_vision_model.finish(f'模型名 {model_name} 不存在\n当前可用模型: {', '.join(shared.plugin_config.models.keys())}')
+    chat_instance.config.set_value('vision_model_name', model_name)
+    await cmd_change_vision_model.finish(f'已切换到模型 {model_name}\n模型标识名: {chat_instance.config.vision_model_identifier}')
+
+
+cmd_discard_vision_model = on_command(
+    (CMD_PREFIX, 'discard', 'vision', 'model'),
+    aliases={(CMD_PREFIX, 'd', 'v', 'm')},
+    permission=SUPERUSER
+)
+
+@cmd_discard_vision_model.handle()
+async def discard_vision_model_name(event: MessageEvent, bot: Bot):
+    chat_instance = await get_chat_instance(cmd_discard_vision_model, event, bot)
+    chat_instance.config.set_value('vision_model_name', DEFAULT)
+    await cmd_discard_vision_model.finish(f'已切换到默认模型 {chat_instance.config.vision_model_name}\n模型标识名: {chat_instance.config.vision_model_identifier}')
 
 
 cmd_info_chat = on_command(

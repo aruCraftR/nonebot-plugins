@@ -3,9 +3,9 @@ from nonebot.plugin import on_message, on_notice
 from nonebot.adapters.onebot.v11 import MessageEvent, Bot, GroupIncreaseNoticeEvent
 from nonebot.adapters.onebot.v11.permission import PRIVATE_FRIEND, GROUP
 
-from .chat import get_chat_instance, get_chat_instance_directly
-from .interface import request_chat_completion, UserMessage
-from .utils import uniform_chat_text, get_user_name
+from .chat import ChatInstance, get_chat_instance, get_chat_instance_directly
+from .interface import UserImageMessage, request_chat_completion, UserMessage
+from .utils import UniformedMessage, uniform_chat_text, get_user_name
 from .rule import rule_forbidden_id, rule_forbidden_word, rule_available_message
 
 from . import shared
@@ -31,26 +31,30 @@ async def message_handler(event: MessageEvent, bot: Bot):
         return
 
     sender_name = await chat_instance.get_user_name(event, bot)
-    chat_text, wake_up = await uniform_chat_text(event, bot)
-    if not chat_text:
+    uniformed_chat = await uniform_chat_text(event, bot)
+    if not (uniformed_chat.text or uniformed_chat.image_urls):
         return
 
     if not ((
             chat_instance.config.reply_on_name_mention
             and
-            chat_instance.config.bot_name in chat_text.lower()
+            chat_instance.config.bot_name in uniformed_chat.text.lower()
         ) or (
             chat_instance.config.reply_on_at
             and
-            (wake_up or event.is_tome())
+            (uniformed_chat.wake_up or event.is_tome())
         )):
         if chat_instance.is_group and chat_instance.config.record_other_context:
-            chat_instance.record_other_history(chat_text, sender_name)
+            if not chat_instance.in_throttle_time():
+                await summary_and_record_other_image(chat_instance, uniformed_chat, sender_name)
+            if uniformed_chat.text:
+                chat_instance.record_other_history(uniformed_chat.text, sender_name)
         if shared.plugin_config.debug:
-            shared.logger.info(f'{sender_name} 的消息 {chat_text} 不满足生成条件, 已跳过')
+            shared.logger.info(f'{sender_name} 的消息 {uniformed_chat.text} 不满足生成条件, 已跳过')
         return
 
-    chat_instance.record_chat_history(chat_text, sender_name)
+    if uniformed_chat.text:
+        chat_instance.record_chat_history(uniformed_chat.text, sender_name)
 
     if chat_instance.in_throttle_time():
         return
@@ -58,9 +62,17 @@ async def message_handler(event: MessageEvent, bot: Bot):
     if shared.plugin_config.debug:
         shared.logger.info(f'正在准备为 {sender_name} 生成消息')
 
-    response, completion_token_count, success = await request_chat_completion(chat_instance)
-    if success:
-        chat_instance.record_chat_history(response, token_count=completion_token_count)
+    if uniformed_chat.image_urls:
+        if uniformed_chat.text:
+            await summary_and_record_chat_image(chat_instance, uniformed_chat, sender_name)
+        else:
+            response, completion_token_count, success = await summary_image(chat_instance, uniformed_chat)
+            if success:
+                chat_instance.record_chat_history(response, sender_name, token_count=completion_token_count)
+    if uniformed_chat.text:
+        response, completion_token_count, success = await request_chat_completion(chat_instance)
+        if success:
+            chat_instance.record_chat_history(response, token_count=completion_token_count)
     await message.finish(response)
 
 
@@ -91,7 +103,42 @@ async def _(event: GroupIncreaseNoticeEvent, bot: Bot):
                 f'欢迎 {user_name} 加入群聊', '',
                 provide_local_time=chat_instance.config.provide_local_time
             )
-        ]
+        ],
+        use_history=False
     )
     if success:
         await message.finish(response)
+
+
+async def summary_and_record_chat_image(chat_instance: ChatInstance, uniformed_chat: UniformedMessage, sender_name: str):
+    if not uniformed_chat.image_urls:
+        return
+    response, completion_token_count, success = await summary_image(chat_instance, uniformed_chat)
+    if success:
+        chat_instance.record_chat_history(response, sender_name, token_count=completion_token_count)
+
+
+async def summary_and_record_other_image(chat_instance: ChatInstance, uniformed_chat: UniformedMessage, sender_name: str):
+    if not uniformed_chat.image_urls:
+        return
+    response, completion_token_count, success = await summary_image(chat_instance, uniformed_chat)
+    if success:
+        chat_instance.record_other_history(response, sender_name, token_count=completion_token_count)
+
+
+async def summary_image(chat_instance: ChatInstance, uniformed_chat: UniformedMessage) -> tuple[str, int, bool]:
+    if shared.plugin_config.debug:
+        shared.logger.info(f'正在总结图像 {uniformed_chat.image_urls}')
+
+    response, completion_token_count, success = await request_chat_completion(
+        chat_instance,
+        [
+            UserImageMessage(
+                uniformed_chat.image_urls,
+                chat_instance.config.vision_model_prompt
+            )
+        ],
+        use_history=False, use_system_message=False, use_vision_model=True
+    )
+    response = f'一张图像, 其中的内容: {response}'
+    return response, completion_token_count, success

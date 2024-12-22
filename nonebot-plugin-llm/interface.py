@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
 
 class BaseMessage:
-    data_keys = ('role', 'name', 'content', 'token_count')
     role = Literal['system', 'user', 'assistant']
     _name: Optional[str]
     _content: str
@@ -37,7 +36,7 @@ class BaseMessage:
         self._name = v
 
     @property
-    def content(self) -> str:
+    def content(self) -> str | list[dict[str, str]]:
         return self._content
 
     @content.setter
@@ -49,23 +48,20 @@ class BaseMessage:
     def message(self) -> dict[str, Any]:
         return self.to_message()
 
-    def to_message(self) -> dict[str, str]:
+    def to_message(self) -> dict[str, Any]:
         if self._message is None:
             self._message = self._to_message()
         return self._message
 
-    def _to_message(self) -> dict[str, str]:
+    def _to_message(self) -> dict[str, Any]:
         return {
             'role': self.role,
-            'content': self._content
+            'content': self.content
         } if self._name is None else {
             'role': self.role,
             'name': self._name,
-            'content': self._content
+            'content': self.content
         } # type: ignore
-
-    def to_dict(self) -> dict[str, Any]:
-        return {i: getattr(self, i) for i in self.data_keys}
 
     def add_username(self):
         extra = f'{self._name}说 '
@@ -73,7 +69,7 @@ class BaseMessage:
         return extra
 
     def add_local_time(self):
-        extra = f'[时间: {asctime()}] '
+        extra = f'[当前时间: {asctime()}] '
         self.content = f'{extra}{self._content}'
         return extra
 
@@ -85,11 +81,17 @@ class SystemMessage(BaseMessage):
 class UserMessage(BaseMessage):
     role = 'user'
 
-    def __init__(self, content: str, name: str, *, provide_username=False, provide_local_time=False) -> None:
+    def __init__(self, content: str, name: Optional[str], *, token_count: int | None = None, provide_username=False, provide_local_time=False) -> None:
         super().__init__(content, name, token_count=0)
-        if provide_username: self.add_username()
-        if provide_local_time: self.add_local_time()
-        self.recount_token()
+        extra_token = 0
+        if provide_username:
+                extra_token += count_token(self.add_username())
+        if provide_local_time:
+                extra_token += count_token(self.add_local_time())
+        if token_count is not None:
+            self.token_count = token_count + extra_token
+        else:
+            self.recount_token()
 
 
 class ModelMessage(BaseMessage):
@@ -107,21 +109,32 @@ class ModelMessage(BaseMessage):
             self.recount_token()
 
 
+class UserImageMessage(UserMessage):
+    def __init__(self, image_urls: list[str], text_content: str) -> None:
+        super().__init__(text_content, None)
+        self.image_urls = image_urls
+
+    @property
+    def content(self) -> list[dict[str, Any]]:
+        content_list = [{"type": "text", "text": self._content}]
+        content_list.extend({"type": "image_url", "image_url": {"url": i}} for i in self.image_urls) # type: ignore
+        return content_list
+
+    def recount_token(self):
+        """UserImageMessage暂时仅用作过渡消息, 无需计算token占用量"""
+        return
+
+
 def count_token(text: str):
     return len(shared.tiktoken.encode(text))
 
 
-async def request_chat_completion(chat_instance: 'ChatInstance', _override: Optional[list[BaseMessage]] = None) -> tuple[str, int, bool]:
+async def request_chat_completion(chat_instance: 'ChatInstance', extra_messages: Optional[list[BaseMessage]] = None, *, use_vision_model=False, use_system_message=True, use_history=True) -> tuple[str, int, bool]:
     try:
         res: ChatCompletion = await chat_instance.config.async_open_ai.chat.completions.create(
-            model=chat_instance.config.model_identifier,
-            messages=chat_instance.get_chat_messages(_override), # type: ignore
-            temperature=chat_instance.config.chat_temperature,
-            # max_tokens=self.config['max_tokens'],
-            top_p=chat_instance.config.chat_top_p,
-            frequency_penalty=chat_instance.config.chat_frequency_penalty,
-            presence_penalty=chat_instance.config.chat_presence_penalty,
-            timeout=chat_instance.config.api_timeout,
+            model=chat_instance.config.vision_model_identifier if use_vision_model else chat_instance.config.text_model_identifier,
+            messages=chat_instance.get_chat_messages(extra_messages, use_system_message=use_system_message, use_history=use_history), # type: ignore
+            **chat_instance.config.chat_completion_kwargs
         )
         content = res.choices[0].message.content.strip()
         if content.startswith('['):
