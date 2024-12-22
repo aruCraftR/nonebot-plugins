@@ -88,10 +88,9 @@ class LLMConfig:
         if self.start_comment is not None:
             commented_map.yaml_set_start_comment(self.start_comment)
         for key, checker in self.config_checkers.items():
-            commented_map.yaml_set_comment_before_after_key(key)
             if checker.comment is None:
                 continue
-            commented_map.yaml_set_comment_before_after_key(key, checker.comment, 1)
+            commented_map.yaml_add_eol_comment(f'# {checker.comment}', key)
         return commented_map
 
     def get_kv(self) -> Generator[Tuple[str, Any]]:
