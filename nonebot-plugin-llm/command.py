@@ -175,7 +175,7 @@ cmd_global_info_chat = on_command(
 async def global_info_chat():
     msg = [
         f'{i.chat_key}: 对话数{len(i.history.chat_history)} {\
-            f"上下文数{len(i.history.chat_history)}" if i.is_group else "无上下文"\
+            f"上下文数{len(i.history.other_history)}" if i.is_group else "无上下文"\
         }' for i in get_chat_instances()
     ]
     msg.append(f'总计 {len(msg)} 个已加载会话')
