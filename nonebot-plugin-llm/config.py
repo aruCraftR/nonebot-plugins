@@ -48,7 +48,7 @@ class Item(NamedTuple):
             if isinstance(i, Filter):
                 if value != DEFAULT and isinstance(value, Iterable):
                     value = i.get_filtered_value(value) # type: ignore
-                    setattr(self, config.get_attr_name(key), value)
+                    setattr(config, config.get_attr_name(key), value)
                     continue
             elif not i(value):
                 return False
