@@ -56,8 +56,8 @@ class ChatInstance:
     def clear_history(self):
         self.history = ChatHistory(self, False)
 
-    def get_chat_messages(self, extra: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True) -> list[dict[str, str]]:
-        return self.history.get_chat_messages(extra, use_system_message=use_system_message, use_history=use_history)
+    async def get_chat_messages(self, extra: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True) -> list[dict[str, str]]:
+        return await self.history.get_chat_messages(extra, use_system_message=use_system_message, use_history=use_history)
 
     @property
     def enabled(self):
@@ -172,17 +172,17 @@ class ChatHistory:
                 if value is not None:
                     setattr(self, k, value)
 
-    def get_chat_messages(self, extra_messages: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True) -> list[dict[str, str]]:
+    async def get_chat_messages(self, extra_messages: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True) -> list[dict[str, str]]:
         if use_system_message:
-            system_message = self.instance.config.system_message
+            system_message = await self.instance.config.system_message
             messages = [system_message] if system_message else []
         else:
             messages = []
         if use_history:
             histories = sorted(chain(self.other_history, self.chat_history), key=lambda x: x.timestamp)
-            messages.extend(i.to_message() for i in histories)
+            messages.extend(await (await i.to_message() for i in histories))
         if extra_messages is not None:
-            messages.extend(i.to_message() for i in extra_messages)
+            messages.extend(await (await i.to_message() for i in extra_messages))
         return messages
 
     def add_other_history(self, text: str, sender: str, auto_remove=True, *, token_count: Optional[int] = None):

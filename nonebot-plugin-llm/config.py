@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from pathlib import Path
 import os
-from typing import Any, Callable, Generator, Literal, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Generator, NamedTuple, Optional, Tuple
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
@@ -36,10 +36,23 @@ STR_LIST = Filter(lambda x: isinstance(x, str))
 
 class Item(NamedTuple):
     types: type | Tuple[type, ...]
-    condition: Optional[Callable | Filter]
+    condition: Optional[(Callable | Filter) | tuple[Callable | Filter, ...]]
     default: Any
     comment: Optional[str] = None
 
+    def validate(self, config: 'LLMConfig', key: str, value: Any) -> bool:
+        if self.condition is None:
+            return True
+        conditions = self.condition if isinstance(self.condition, tuple) else (self.condition,)
+        for i in conditions:
+            if isinstance(i, Filter):
+                if value != DEFAULT and isinstance(value, Iterable):
+                    value = i.get_filtered_value(value) # type: ignore
+                    setattr(self, config.get_attr_name(key), value)
+                    continue
+            elif not i(value):
+                return False
+        return True
 
 
 class LLMConfig:
@@ -89,32 +102,24 @@ class LLMConfig:
     def apply_yaml(self) -> None:
         for key, item in self.config_checkers.items():
             value = self.yaml.get(key)
-            use_default = False
             if value is None:
-                use_default = True
-            else:
-                is_default = False
-                if value == DEFAULT:
-                    if self.allow_default:
-                        is_default = True
-                    else:
-                        use_default = True
-                elif (not is_default) and (item.types is not None):
-                    use_default = not isinstance(value, item.types)
-                if (
-                    not (use_default or is_default)
-                    and item.condition is not None
-                ):
-                    if isinstance(item.condition, Filter):
-                        if value != DEFAULT and isinstance(value, Iterable):
-                            setattr(self, self.get_attr_name(key), item.condition.get_filtered_value(value)) # type: ignore
-                            continue
-                    else:
-                        use_default = not item.condition(value)
-            if use_default:
-                setattr(self, self.get_attr_name(key), item.default)
-            else:
-                setattr(self, self.get_attr_name(key), value)
+                self.back_to_default(key, item)
+                continue
+            if value == DEFAULT:
+                if not self.allow_default:
+                    self.back_to_default(key, item)
+                continue
+            elif item.types is not None:
+                if not isinstance(value, item.types):
+                    self.back_to_default(key, item)
+                    continue
+            if (item.condition is not None) and (not item.validate(self, key, value)):
+                self.back_to_default(key, item)
+                continue
+            setattr(self, self.get_attr_name(key), value)
+
+    def back_to_default(self, key: str, item: Item):
+        setattr(self, self.get_attr_name(key), item.default)
 
     def set_value(self, key: str, value: Any, *, save=True):
         setattr(self, self.get_attr_name(key), value)
@@ -126,39 +131,42 @@ class PluginConfig(LLMConfig):
     start_comment = 'LLM插件全局配置文件'
     config_path = Path('data/llm/config.yml')
     config_checkers = {
-        'openai_api_v1': Item(str, None, 'https://api.openai.com/v1'),
+        'openai_api_v1': Item(str, None, 'https://api.openai.com/v1', '任意OpenAI标准的接口'),
         'models': Item(dict, STR_DICT_KV, {'ChatGPT-4o': 'gpt-4o'}),
-        'text_model_name': Item(str, None, 'ChatGPT-4o'),
-        'vision_model_name': Item(str, None, 'ChatGPT-4o'),
-        'api_timeout': Item(int, lambda x: x > 0, 60),
-        'reply_throttle_time': Item((int, float), lambda x: x >= 0, 3),
-        'bot_name': Item(str, None, 'LLM'),
+        'text_model_name': Item(str, None, 'ChatGPT-4o', '用于文本生成的主模型名'),
+        'vision_model_name': Item(str, None, 'ChatGPT-4o', '用于图像识别的辅助模型名'),
+        'api_timeout': Item(int, lambda x: x > 0, 60, 'API请求超时时间'),
+        'reply_throttle_time': Item((int, float), lambda x: x >= 0, 3, '节流时长, 同一会话在节流时间内仅能处理第一条消息'),
+        'bot_name': Item(str, None, 'LLM', '机器人名称, 必须在系统提示词预设内'),
         'system_prompts': Item(dict, STR_DICT_KV, {'LLM': None}),
-        'vision_model_prompt': Item(str, None, '请提取此图像中的文字并列出, 同时单独总结该图像的场景等除文本外的视觉内容'),
-        'chat_top_p': Item((int, float), lambda x: 0 <= x <= 1, 0.95),
-        'chat_temperature': Item((int, float), lambda x: 0 <= x <= 1, 0.75),
-        'chat_presence_penalty': Item((int, float), lambda x: -2 <= x <= 2, 0.8),
-        'chat_frequency_penalty': Item((int, float), lambda x: -2 <= x <= 2, 0.8),
-        'reply_on_private': Item(bool, None, True),
-        'reply_on_name_mention': Item(bool, None, True),
-        'reply_on_at': Item(bool, None, True),
-        'reply_on_welcome': Item(bool, None, False),
-        'use_group_card': Item(bool, None, True),
-        'only_text_message': Item(bool, None, False),
-        'record_other_context': Item(bool, None, True),
-        'record_other_context_token_limit': Item(int, lambda x: x > 0, 2048),
-        'record_chat_context': Item(bool, None, True),
-        'record_chat_context_token_limit': Item(int, lambda x: x > 0, 2048),
-        'auto_save_history': Item(bool, None, True),
-        'auto_save_interval': Item((int, float), lambda x: x > 0, 5),
-        'provide_username': Item(bool, None, True),
-        'provide_local_time': Item(bool, None, True),
-        'forbidden_users': Item(list, INT_LIST, []),
-        'forbidden_groups': Item(list, INT_LIST, []),
-        'forbidden_words': Item(list, STR_LIST, []),
-        'event_priority': Item(int, None, 99),
-        'block_event': Item(bool, None, False),
-        'debug': Item(bool, None, False)
+        'vision_model_prompt': Item(str, None, '请提取此图像中的文字并列出, 同时单独总结该图像的场景等除文本外的视觉内容', '用于告知视觉辅助模型生成图像描述, 以提供信息给主文本模型进行生成'),
+        'image_size_limit': Item(list, (INT_LIST, (lambda x: len(x) == 2)), [720, 720], '发送给视觉模型的图像分辨率大小限制'),
+        'image_quality': Item(int, lambda x: 1 <= x <= 100, 80, '编码的图像质量, 用于加快请求速度, 高于95的值基本无质量提升'),
+        'image_subsampling': Item(int, lambda x: 0 <= x <= 2, 0, '子采样等级, 0=4:4:4; 1=4:2:2; 2=4:2:0'),
+        'chat_top_p': Item((int, float), lambda x: 0 <= x <= 1, 1, '用于模型的Top P值, 越大越遵循输入'),
+        'chat_temperature': Item((int, float), lambda x: 0 <= x <= 1, 0.75, '用于模型的温度值, 越大越随机'),
+        'chat_presence_penalty': Item((int, float), lambda x: -2 <= x <= 2, 0.8, '重复惩罚'),
+        'chat_frequency_penalty': Item((int, float), lambda x: -2 <= x <= 2, 0.8, '频率惩罚'),
+        'reply_on_private': Item(bool, None, True, '是否为私聊消息生成文本'),
+        'reply_on_name_mention': Item(bool, None, True, '是否在提及机器人名称时生成文本'),
+        'reply_on_at': Item(bool, None, True, '是否在@机器人名称时生成文本'),
+        'reply_on_welcome': Item(bool, None, False, '是否欢迎新成员入群'),
+        'use_group_card': Item(bool, None, True, '获取昵称时是否使用群名片'),
+        'only_text_message': Item(bool, None, False, '是否仅处理纯文本信息'),
+        'record_other_context': Item(bool, None, True, '是否记录上下文无关对话'),
+        'record_other_context_token_limit': Item(int, lambda x: x > 0, 2048, '上下文无关对话Token数上限'),
+        'record_chat_context': Item(bool, None, True, '是否记录直接对话内容'),
+        'record_chat_context_token_limit': Item(int, lambda x: x > 0, 2048, '直接对话内容Token上限'),
+        'auto_save_history': Item(bool, None, True, '是否自动保存历史记录'),
+        'auto_save_interval': Item((int, float), lambda x: x > 0, 5, '历史记录自动保存间隔'),
+        'provide_username': Item(bool, None, True, '是否将用户名提供给模型(占用少量token)'),
+        'provide_local_time': Item(bool, None, True, '是否将当前时间提供给模型(占用少量token)'),
+        'forbidden_users': Item(list, INT_LIST, [], '禁止触发的QQ号'),
+        'forbidden_groups': Item(list, INT_LIST, [], '禁止触发的QQ群'),
+        'forbidden_words': Item(list, STR_LIST, [], '禁止触发的关键词'),
+        'event_priority': Item(int, None, 99, '消息事件监听器优先级'),
+        'block_event': Item(bool, None, False, '是否阻止消息事件向低优先级监听器分发'),
+        'debug': Item(bool, None, False, '调试模式')
     }
 
     openai_api_v1: str
@@ -169,6 +177,9 @@ class PluginConfig(LLMConfig):
     reply_throttle_time: int | float
     bot_name: str
     system_prompts: dict[str, str]
+    image_size_limit: tuple[int, int]
+    image_quality: int
+    image_subsampling: int
     vision_model_prompt: str
     chat_top_p: int | float
     chat_temperature: int | float
@@ -197,6 +208,7 @@ class PluginConfig(LLMConfig):
 
     def apply_yaml(self) -> None:
         super().apply_yaml()
+        self.image_size_limit = tuple(self.image_size_limit) # type: ignore
         if self.bot_name not in self.system_prompts:
             shared.logger.warning(f'全局预设名 {self.bot_name} 未在system_prompts中定义')
             if self.system_prompts:
@@ -360,11 +372,11 @@ class InstanceConfig(LLMConfig):
         return shared.plugin_config.system_prompts.get(self.bot_name)
 
     @property
-    def system_message(self) -> Optional[dict[str, str]]:
+    async def system_message(self) -> Optional[dict[str, str]]:
         if self.system_prompt is None:
             return
         if self._sys_msg_cache is None:
-            self._sys_msg_cache = SystemMessage(self.system_prompt, token_count=0).to_message()
+            self._sys_msg_cache = await SystemMessage(self.system_prompt, token_count=0).to_message()
         return self._sys_msg_cache
 
     @property
@@ -417,7 +429,6 @@ class InstanceConfig(LLMConfig):
         self._async_open_ai = None
         self._sys_msg_cache = None
         self._chat_completion_kwargs = None
-
 
 
 shared.plugin_config = PluginConfig()

@@ -5,6 +5,7 @@ from typing import Any, Literal, Optional, TYPE_CHECKING
 from openai.types.chat.chat_completion import ChatCompletion
 
 from . import shared
+from .image import QQImage
 
 if TYPE_CHECKING:
     from .chat import ChatInstance
@@ -36,7 +37,7 @@ class BaseMessage:
         self._name = v
 
     @property
-    def content(self) -> str | list[dict[str, str]]:
+    async def content(self) -> str | list[dict[str, str]]:
         return self._content
 
     @content.setter
@@ -44,23 +45,19 @@ class BaseMessage:
         self._message = None
         self._content = v
 
-    @property
-    def message(self) -> dict[str, Any]:
-        return self.to_message()
-
-    def to_message(self) -> dict[str, Any]:
+    async def to_message(self) -> dict[str, Any]:
         if self._message is None:
-            self._message = self._to_message()
+            self._message = await self._to_message()
         return self._message
 
-    def _to_message(self) -> dict[str, Any]:
+    async def _to_message(self) -> dict[str, Any]:
         return {
             'role': self.role,
-            'content': self.content
+            'content': await self.content
         } if self._name is None else {
             'role': self.role,
             'name': self._name,
-            'content': self.content
+            'content': await self.content
         } # type: ignore
 
     def add_username(self):
@@ -113,11 +110,17 @@ class UserImageMessage(UserMessage):
     def __init__(self, image_urls: list[str], text_content: str) -> None:
         super().__init__(text_content, None)
         self.image_urls = image_urls
+        self.images = [QQImage(i) for i in image_urls]
 
     @property
-    def content(self) -> list[dict[str, Any]]:
+    async def content(self) -> list[dict[str, Any]]:
         content_list = [{"type": "text", "text": self._content}]
-        content_list.extend({"type": "image_url", "image_url": {"url": i}} for i in self.image_urls) # type: ignore
+        content_list.extend(await (
+            {
+                "type": "image_url",
+                "image_url": {"url": await i.get_base64()}
+            } for i in self.images
+        ))
         return content_list
 
     def recount_token(self):
@@ -133,7 +136,7 @@ async def request_chat_completion(chat_instance: 'ChatInstance', extra_messages:
     try:
         res: ChatCompletion = await chat_instance.config.async_open_ai.chat.completions.create(
             model=chat_instance.config.vision_model_identifier if use_vision_model else chat_instance.config.text_model_identifier,
-            messages=chat_instance.get_chat_messages(extra_messages, use_system_message=use_system_message, use_history=use_history), # type: ignore
+            messages=await chat_instance.get_chat_messages(extra_messages, use_system_message=use_system_message, use_history=use_history), # type: ignore
             **chat_instance.config.chat_completion_kwargs
         )
         content = res.choices[0].message.content.strip()
