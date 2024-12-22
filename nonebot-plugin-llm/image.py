@@ -29,9 +29,9 @@ class QQImage:
             shared.logger.error('图像下载失败')
             raise e
         finally:
-            response.close()
+            await response.aclose()
 
-    async def get_base64(self):
+    async def get_base64(self) -> str:
         if self._base64 is None:
             image = await self.get_image()
             image.thumbnail(shared.plugin_config.image_size_limit)

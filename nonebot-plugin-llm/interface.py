@@ -1,8 +1,10 @@
 
 from time import time, asctime
+from traceback import print_exc
 from typing import Any, Literal, Optional, TYPE_CHECKING
 
 from openai.types.chat.chat_completion import ChatCompletion
+from openai import OpenAIError
 
 from . import shared
 from .image import QQImage
@@ -143,5 +145,8 @@ async def request_chat_completion(chat_instance: 'ChatInstance', extra_messages:
         if content.startswith('['):
             content = content.split(']', 1)[-1]
         return content.strip(), res.usage.completion_tokens, True
+    except OpenAIError as e:
+        return f"请求API时发生错误: {repr(e)[:100]}", 0, False
     except Exception as e:
-        return f"请求API时发生错误: {repr(e)}", 0, False
+        print_exc(10)
+        return f"内部错误: {repr(e)}", 0, False
