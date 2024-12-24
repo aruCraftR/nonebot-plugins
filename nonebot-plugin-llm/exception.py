@@ -1,4 +1,4 @@
 
 
-class HistoryUpgradeException(Exception):
+class RequestIncompleteError(Exception):
     pass

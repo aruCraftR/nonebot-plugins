@@ -1,13 +1,14 @@
 
 from time import time, asctime
 from traceback import print_exc
-from typing import Any, Literal, Optional, TYPE_CHECKING
+from typing import Any, Literal, Optional, TYPE_CHECKING, Self
 
 from openai.types.chat.chat_completion import ChatCompletion
 from openai import OpenAIError
 
 from . import shared
 from .image import QQImage
+from .exception import RequestIncompleteError
 
 if TYPE_CHECKING:
     from .chat import ChatInstance
@@ -133,20 +134,71 @@ def count_token(text: str):
     return len(shared.tiktoken.encode(text))
 
 
-async def request_chat_completion(chat_instance: 'ChatInstance', extra_messages: Optional[list[BaseMessage]] = None, *, use_vision_model=False, use_system_message=True, use_history=True, extra_kwargs: dict[str, Any] = {}) -> tuple[str, int, bool]:
-    try:
-        res: ChatCompletion = await chat_instance.config.async_open_ai.chat.completions.create(
-            model=chat_instance.config.vision_model_identifier if use_vision_model else chat_instance.config.text_model_identifier,
-            messages=await chat_instance.get_chat_messages(extra_messages, use_system_message=use_system_message, use_history=use_history), # type: ignore
-            **chat_instance.config.chat_completion_kwargs,
-            **extra_kwargs
-        )
-        content = res.choices[0].message.content.strip()
-        if content.startswith('['):
-            content = content.split(']', 1)[-1]
-        return content.strip(), res.usage.completion_tokens, True
-    except OpenAIError as e:
-        return f"请求API时发生错误: {repr(e)[:100]}", 0, False
-    except Exception as e:
-        print_exc(10)
-        return f"内部错误: {repr(e)}", 0, False
+class ChatCompletionRequest:
+    def __init__(self, chat_instance: 'ChatInstance', *, use_vision_model=False) -> None:
+        self.instance = chat_instance
+        self.use_vision_model = use_vision_model
+        self._success: Optional[bool] = None
+        self._response: Optional[ChatCompletion] = None
+        self._content: Optional[str] = None
+        self._raw_content: Optional[str] = None
+
+    @property
+    def success(self) -> bool:
+        if self._success is None:
+            raise RequestIncompleteError('Request incomplete')
+        return self._success
+
+    @property
+    def response(self) -> ChatCompletion:
+        if self._response is None:
+            raise RequestIncompleteError('Request incomplete')
+        return self._response
+
+    @property
+    def content(self) -> str:
+        if self._content is None:
+            raise RequestIncompleteError('Request incomplete')
+        return self._content
+
+    @content.setter
+    def content(self, v: str):
+        self._content = v
+
+    @property
+    def raw_content(self) -> str:
+        if self._raw_content is None:
+            raise RequestIncompleteError('Request incomplete')
+        return self._raw_content
+
+    @property
+    def completion_tokens(self) -> int:
+        return self.response.usage.completion_tokens
+
+    @property
+    def prompt_tokens(self) -> int:
+        return self.response.usage.prompt_tokens
+
+
+    async def request(self, extra_messages: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True, extra_kwargs: Optional[dict[str, Any]] = None) -> Self:
+        if extra_kwargs is None:
+            extra_kwargs = {}
+        try:
+            self._response = await self.instance.config.async_open_ai.chat.completions.create(
+                model=self.instance.config.vision_model_identifier if self.use_vision_model else self.instance.config.text_model_identifier,
+                messages=await self.instance.get_chat_messages(extra_messages, use_system_message=use_system_message, use_history=use_history), # type: ignore
+                **self.instance.config.chat_completion_kwargs,
+                **extra_kwargs
+            )
+        except OpenAIError as e:
+            self._content = self._raw_content = f"请求API时发生错误: {repr(e)[:100]}"
+            shared.logger.warning(self._content)
+        except Exception as e:
+            print_exc(10)
+            self._content = self._raw_content = f"内部错误: {repr(e)}"
+        else:
+            self._raw_content = content = self._response.choices[0].message.content.strip()
+            if content.startswith('['):
+                content = content.split(']', 1)[-1]
+            self._content = content
+        return self

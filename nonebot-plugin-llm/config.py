@@ -134,6 +134,7 @@ class PluginConfig(LLMConfig):
     config_path = Path('data/llm/config.yml')
     config_checkers = {
         'openai_api_v1': Item(str, None, 'https://api.openai.com/v1', '任意OpenAI标准的接口'),
+        'api_key': Item(str, None, '', '接口密钥'),
         'models': Item(dict, STR_DICT_KV, {'ChatGPT-4o': 'gpt-4o'}),
         'text_model_name': Item(str, None, 'ChatGPT-4o', '用于文本生成的主模型名'),
         'vision_model_name': Item(str, None, 'ChatGPT-4o', '用于图像识别的辅助模型名'),
@@ -172,6 +173,7 @@ class PluginConfig(LLMConfig):
     }
 
     openai_api_v1: str
+    api_key: str
     models: dict[str, str]
     text_model_name: str
     vision_model_name: str
@@ -245,6 +247,7 @@ class InstanceConfig(LLMConfig):
     allow_default = True
     config_checkers = {
         'openai_api_v1': Item(str, None, DEFAULT),
+        'api_key': Item(str, None, DEFAULT),
         'text_model_name': Item(str, None, DEFAULT),
         'vision_model_name': Item(str, None, DEFAULT),
         'api_timeout': Item(int, lambda x: x > 0, DEFAULT),
@@ -276,6 +279,12 @@ class InstanceConfig(LLMConfig):
     @property
     def openai_api_v1(self) -> str:
         return self.get_value('openai_api_v1')
+
+    @property
+    def api_key(self) -> Optional[str]:
+        if key := self.get_value('text_model_name'):
+            return key
+        raise None
 
     @property
     def text_model_name(self) -> str:
@@ -392,9 +401,11 @@ class InstanceConfig(LLMConfig):
     @property
     def async_open_ai(self) -> AsyncOpenAI:
         if self._async_open_ai is None:
+            if self.api_key is None:
+                raise ValueError('api_key not set.')
             self._async_open_ai = AsyncOpenAI(
                 base_url=self.openai_api_v1,
-                api_key='none'
+                api_key=self.api_key
             )
         return self._async_open_ai
 
