@@ -191,7 +191,7 @@ class ChatCompletionRequest:
                 **extra_kwargs
             )
         except OpenAIError as e:
-            self._content = self._raw_content = f"请求API时发生错误: {repr(e)[:100]}"
+            self._content = self._raw_content = f"请求API时发生错误: {repr(e)[:150]}"
             shared.logger.warning(self._content)
             self._success = False
         except Exception as e:

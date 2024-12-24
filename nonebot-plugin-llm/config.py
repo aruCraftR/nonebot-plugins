@@ -282,7 +282,7 @@ class InstanceConfig(LLMConfig):
 
     @property
     def api_key(self) -> Optional[str]:
-        if key := self.get_value('text_model_name'):
+        if key := self.get_value('api_key'):
             return key
         raise None
 
