@@ -70,6 +70,9 @@ class ChatInstance:
         self.last_msg_time = msg_time
         return False
 
+    def load_history_from_instance(self, instance: 'ChatInstance'):
+        self.history.load_history_from_instance(instance)
+
 
 #-----------------------------
 #
@@ -121,6 +124,20 @@ class ChatHistory:
         self.set_next_auto_save_time(time())
         if load_pickle:
             self.load_pickle()
+
+    def load_history_from_instance(self, instance: 'ChatInstance'):
+        if self.instance.is_group:
+            self.other_history = instance.history.other_history.copy()
+            self.chat_history = instance.history.chat_history.copy()
+            self.other_history_token_count = instance.history.other_history_token_count
+            self.chat_history_token_count = instance.history.chat_history_token_count
+            self.last_other_text = instance.history.last_other_text
+            self.check_other_history_limit()
+        else:
+            self.chat_history = deque(sorted(chain(instance.history.other_history, instance.history.chat_history), key=lambda x: x.timestamp))
+            self.chat_history_token_count = instance.history.other_history_token_count + instance.history.chat_history_token_count
+        self.last_chat_text = instance.history.last_chat_text
+        self.check_chat_history_limit()
 
     @property
     def other_context_token_limit(self) -> int:
@@ -194,10 +211,8 @@ class ChatHistory:
             message = UserMessage(text, sender, token_count=token_count, provide_username=self.instance.config.provide_username, provide_local_time=self.instance.config.provide_local_time)
             self.other_history_token_count += message.token_count
             self.other_history.append(message)
-            if not auto_remove:
-                return
-            while len(self.other_history) > 0 and self.other_history_token_count > self.other_context_token_limit:
-                self.other_history_token_count -= self.other_history.popleft().token_count
+            if auto_remove:
+                self.check_other_history_limit()
 
     def add_chat_history(self, text: str, sender: Optional[str] = None, auto_remove=True, *, token_count: Optional[int] = None):
         self.changed = True
@@ -211,10 +226,16 @@ class ChatHistory:
                 message = UserMessage(text, sender, token_count=token_count, provide_username=self.instance.config.provide_username, provide_local_time=self.instance.config.provide_local_time)
             self.chat_history_token_count += message.token_count
             self.chat_history.append(message)
-            if not auto_remove:
-                return
-            while len(self.chat_history) > 0 and self.chat_history_token_count > self.chat_context_token_limit:
-                self.chat_history_token_count -= self.chat_history.popleft().token_count
+            if auto_remove:
+                self.check_chat_history_limit()
+
+    def check_other_history_limit(self):
+        while len(self.other_history) > 0 and self.other_history_token_count > self.other_context_token_limit:
+            self.other_history_token_count -= self.other_history.popleft().token_count
+
+    def check_chat_history_limit(self):
+        while len(self.chat_history) > 0 and self.chat_history_token_count > self.chat_context_token_limit:
+            self.chat_history_token_count -= self.chat_history.popleft().token_count
 
 
 async def get_chat_instance(matcher: type[Matcher], event: MessageEvent, bot: Bot) -> ChatInstance:
