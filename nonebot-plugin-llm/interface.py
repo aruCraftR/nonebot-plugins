@@ -193,10 +193,13 @@ class ChatCompletionRequest:
         except OpenAIError as e:
             self._content = self._raw_content = f"请求API时发生错误: {repr(e)[:100]}"
             shared.logger.warning(self._content)
+            self._success = False
         except Exception as e:
             print_exc(10)
             self._content = self._raw_content = f"内部错误: {repr(e)}"
+            self._success = False
         else:
+            self._success = True
             self._raw_content = content = self._response.choices[0].message.content.strip()
             if content.startswith('['):
                 content = content.split(']', 1)[-1]
