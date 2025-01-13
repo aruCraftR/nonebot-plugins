@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from loguru import Record
 
 def __patcher(x: 'Record'):
-    x['name'] = 'LLM'
+    x['name'] = 'RAGFlow'
 
 nonebot_config: Config
 plugin_config: 'config.PluginConfig'

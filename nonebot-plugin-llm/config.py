@@ -60,7 +60,7 @@ class LLMConfig:
     allow_default = False
     config_path: Path
     config_checkers: dict[str, Item]
-    start_comment: Optional[str]
+    start_comment: Optional[str] = None
 
     def __init__(self) -> None:
         self.yaml: dict = None # type: ignore
@@ -133,11 +133,16 @@ class PluginConfig(LLMConfig):
     start_comment = 'LLM插件全局配置文件'
     config_path = Path('data/llm/config.yml')
     config_checkers = {
+        'enable': Item(bool, None, False, '是否启用'),
+        # 'milvus_server': Item(str, None, 'http://localhost:19530', 'Milvus数据库'),
+        # 'milvus_timeout': Item(int, None, 15, 'Milvus全局超时时间'),
         'openai_api_v1': Item(str, None, 'https://api.openai.com/v1', '任意OpenAI标准的接口'),
         'api_key': Item(str, None, '', '接口密钥'),
         'models': Item(dict, STR_DICT_KV, {'ChatGPT-4o': 'gpt-4o'}),
+        'use_local_bge_m3_model': Item(bool, None, True, '是否使用本地BGE-M3向量化模型 https://milvus.io/docs/zh/embed-with-bgm-m3.md'),
         'text_model_name': Item(str, None, 'ChatGPT-4o', '用于文本生成的主模型名'),
         'vision_model_name': Item(str, None, 'ChatGPT-4o', '用于图像识别的辅助模型名'),
+        # 'embedding_model_name': Item(str, None, 'text-embedding', '用于向量化的模型名'),
         'api_timeout': Item(int, lambda x: x > 0, 60, 'API请求超时时间'),
         'reply_throttle_time': Item((int, float), lambda x: x >= 0, 3, '节流时长, 同一会话在节流时间内仅能处理第一条消息'),
         'bot_name': Item(str, None, 'LLM', '机器人名称, 必须在系统提示词预设内'),
@@ -172,11 +177,16 @@ class PluginConfig(LLMConfig):
         'debug': Item(bool, None, False, '调试模式')
     }
 
+    enable: bool
+    milvus_server: str
+    milvus_timeout: int
     openai_api_v1: str
     api_key: str
     models: dict[str, str]
+    use_local_bge_m3_model: bool
     text_model_name: str
     vision_model_name: str
+    embedding_model_name: str
     api_timeout: int
     reply_throttle_time: int | float
     bot_name: str
@@ -250,6 +260,7 @@ class InstanceConfig(LLMConfig):
         'api_key': Item(str, None, DEFAULT),
         'text_model_name': Item(str, None, DEFAULT),
         'vision_model_name': Item(str, None, DEFAULT),
+        'embedding_model_name': Item(str, None, DEFAULT),
         'api_timeout': Item(int, lambda x: x > 0, DEFAULT),
         'reply_throttle_time': Item((int, float), lambda x: x >= 0, DEFAULT),
         'bot_name': Item(str, None, DEFAULT),
@@ -293,6 +304,10 @@ class InstanceConfig(LLMConfig):
     @property
     def vision_model_name(self) -> str:
         return self.get_value('vision_model_name')
+
+    @property
+    def embedding_model_name(self) -> str:
+        return self.get_value('embedding_model_name')
 
     @property
     def api_timeout(self) -> int:
@@ -383,11 +398,11 @@ class InstanceConfig(LLMConfig):
         return shared.plugin_config.system_prompts.get(self.bot_name)
 
     @property
-    async def system_message(self) -> Optional[dict[str, str]]:
+    async def system_message(self) -> Optional[SystemMessage]:
         if self.system_prompt is None:
             return
         if self._sys_msg_cache is None:
-            self._sys_msg_cache = await SystemMessage(self.system_prompt, token_count=0).to_message()
+            self._sys_msg_cache = SystemMessage(self.system_prompt, token_count=0)
         return self._sys_msg_cache
 
     @property

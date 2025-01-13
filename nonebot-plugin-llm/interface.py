@@ -1,10 +1,11 @@
 
 from time import time, asctime
 from traceback import print_exc
-from typing import Any, Literal, Optional, TYPE_CHECKING, Self
+from typing import Any, Iterable, Literal, Optional, TYPE_CHECKING, Self, Sequence
 
 from openai.types.chat.chat_completion import ChatCompletion
 from openai import OpenAIError
+from milvus_model.hybrid import BGEM3EmbeddingFunction
 
 from . import shared
 from .image import QQImage
@@ -110,7 +111,7 @@ class ModelMessage(BaseMessage):
 
 
 class UserImageMessage(UserMessage):
-    def __init__(self, image_urls: list[str], text_content: str) -> None:
+    def __init__(self, image_urls: Iterable[str], text_content: str) -> None:
         super().__init__(text_content, None)
         self.image_urls = image_urls
         self.images = [QQImage(i) for i in image_urls]
@@ -135,9 +136,11 @@ def count_token(text: str):
 
 
 class ChatCompletionRequest:
-    def __init__(self, chat_instance: 'ChatInstance', *, use_vision_model=False) -> None:
+    TEXT_MODEL = 'text'
+    VISION_MODEL = 'vision'
+
+    def __init__(self, chat_instance: 'ChatInstance') -> None:
         self.instance = chat_instance
-        self.use_vision_model = use_vision_model
         self._success: Optional[bool] = None
         self._response: Optional[ChatCompletion] = None
         self._content: Optional[str] = None
@@ -179,14 +182,25 @@ class ChatCompletionRequest:
     def prompt_tokens(self) -> int:
         return self.response.usage.prompt_tokens
 
+    @staticmethod
+    async def get_messages_list(messages: Sequence[BaseMessage], system_message: Optional[BaseMessage] = None, *, sort=False):
+        if sort:
+            messages = sorted(messages, key=lambda x: x.timestamp)
+        message_list = [await system_message.to_message()] if system_message else []
+        return message_list + [await i.to_message() for i in messages]
 
-    async def request(self, extra_messages: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True, extra_kwargs: Optional[dict[str, Any]] = None) -> Self:
+    async def request(self, messages: Sequence[dict[str, Any]], model_type: str = TEXT_MODEL, *, extra_kwargs: Optional[dict[str, Any]] = None) -> Self:
         if extra_kwargs is None:
             extra_kwargs = {}
+        match model_type:
+            case 'text':
+                model_identifier = self.instance.config.text_model_identifier
+            case 'vision':
+                model_identifier = self.instance.config.vision_model_identifier
         try:
             self._response = await self.instance.config.async_open_ai.chat.completions.create(
-                model=self.instance.config.vision_model_identifier if self.use_vision_model else self.instance.config.text_model_identifier,
-                messages=await self.instance.get_chat_messages(extra_messages, use_system_message=use_system_message, use_history=use_history), # type: ignore
+                model=model_identifier,
+                messages=messages, # type: ignore
                 **self.instance.config.chat_completion_kwargs,
                 **extra_kwargs
             )
@@ -203,5 +217,23 @@ class ChatCompletionRequest:
             self._raw_content = content = self._response.choices[0].message.content.strip()
             if content.startswith('['):
                 content = content.split(']', 1)[-1]
-            self._content = content
+            self._content = content.strip()
         return self
+
+
+if shared.plugin_config.use_local_bge_m3_model:
+    bge_m3_ef = BGEM3EmbeddingFunction(
+        model_name='BAAI/bge-m3',
+        device='cpu',
+        use_fp16=False
+    )
+
+
+async def embedding_documents(text: str | list[str]):
+    if shared.plugin_config.use_local_bge_m3_model:
+        bge_m3_ef.enco(text)
+
+
+async def embedding_queries(text: str):
+    if shared.plugin_config.use_local_bge_m3_model:
+        bge_m3_ef.encode_queries(text)

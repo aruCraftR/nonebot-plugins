@@ -3,7 +3,7 @@ from collections import deque
 from pathlib import Path
 import pickle
 from itertools import chain
-from typing import Optional
+from typing import Any, Iterable, Optional
 from time import time
 
 from nonebot.matcher import Matcher
@@ -47,21 +47,30 @@ class ChatInstance:
         else:
             return self.name
 
-    def record_chat_history(self, text: str, sender: Optional[str] = None, auto_remove=True, *, token_count: Optional[int] = None):
-        self.history.add_chat_history(text, sender, auto_remove, token_count=token_count)
+    def record_chat_history(self, text: str, sender: Optional[str] = None, auto_remove=True, *, token_count: Optional[int] = None) -> ModelMessage | UserMessage:
+        return self.history.add_chat_history(text, sender, auto_remove, token_count=token_count)
 
-    def record_other_history(self, text: str, sender: str, auto_remove=True, *, token_count: Optional[int] = None):
-        self.history.add_other_history(text, sender, auto_remove, token_count=token_count)
+    def record_other_history(self, text: str, sender: str, auto_remove=True, *, token_count: Optional[int] = None) -> UserMessage:
+        return self.history.add_other_history(text, sender, auto_remove, token_count=token_count)
 
     def clear_history(self):
         self.history = ChatHistory(self, False)
 
-    async def get_chat_messages(self, extra: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True) -> list[dict[str, str]]:
-        return await self.history.get_chat_messages(extra, use_system_message=use_system_message, use_history=use_history)
-
     @property
     def enabled(self):
         return self.is_group or self.config.reply_on_private
+
+    @property
+    def total_token_limit(self) -> int:
+        return self.config.record_chat_context_token_limit + self.config.record_other_context_token_limit
+
+    @property
+    def other_context_token_limit(self) -> int:
+        return self.config.record_other_context_token_limit if self.is_group else 0
+
+    @property
+    def chat_context_token_limit(self) -> int:
+        return self.config.record_chat_context_token_limit if self.is_group else self.total_token_limit
 
     def in_throttle_time(self):
         msg_time = time()
@@ -79,7 +88,7 @@ class ChatInstance:
 #           历史记录
 #
 #-----------------------------
-VERSION = 1
+VERSION = 2
 
 def history_data_0_to_1(data: dict) -> dict:
     old_chat_history: deque[tuple[float, dict, int]] = data['chat_history']
@@ -104,21 +113,31 @@ def history_data_0_to_1(data: dict) -> dict:
     data['other_history'] = new_other_history
     return data
 
+def history_data_1_to_2(data: dict) -> dict:
+    return {
+        'chat_history': {
+            'deque': data['chat_history'],
+            'total_tokens': data['chat_history_token_count'],
+            'last_text': data['last_chat_text']
+        },
+        'other_history': {
+            'deque': data['other_history'],
+            'total_tokens': data['other_history_token_count'],
+            'last_text': data['last_other_text']
+        }
+    }
+
 upgrader_list = [
-    history_data_0_to_1
+    history_data_0_to_1, history_data_1_to_2
 ]
 
 
 class ChatHistory:
-    data_keys = ('other_history', 'other_history_token_count', 'last_other_text', 'chat_history', 'chat_history_token_count', 'last_chat_text')
+    history_keys = ('chat_history', 'other_history')
     def __init__(self, instance: ChatInstance, load_pickle=True):
         self.instance = instance
-        self.other_history: deque[BaseMessage] = deque()
-        self.other_history_token_count = 0
-        self.last_other_text = None
-        self.chat_history: deque[BaseMessage] = deque()
-        self.chat_history_token_count = 0
-        self.last_chat_text = None
+        self.other_history: HistoryData = HistoryData(self.instance.other_context_token_limit)
+        self.chat_history: HistoryData = HistoryData(self.instance.chat_context_token_limit)
         self.pickle_path: Path = Path('data/llm', self.instance.chat_key, 'history.pickle')
         self.changed = False
         self.set_next_auto_save_time(time())
@@ -127,28 +146,13 @@ class ChatHistory:
 
     def load_history_from_instance(self, instance: 'ChatInstance'):
         if self.instance.is_group:
-            self.other_history = instance.history.other_history.copy()
-            self.chat_history = instance.history.chat_history.copy()
-            self.other_history_token_count = instance.history.other_history_token_count
-            self.chat_history_token_count = instance.history.chat_history_token_count
-            self.last_other_text = instance.history.last_other_text
-            self.check_other_history_limit()
+            self.other_history.load(instance.history.other_history)
+            self.chat_history.load(instance.history.chat_history)
         else:
-            self.chat_history = deque(sorted(chain(instance.history.other_history, instance.history.chat_history), key=lambda x: x.timestamp))
-            self.chat_history_token_count = instance.history.other_history_token_count + instance.history.chat_history_token_count
-        self.last_chat_text = instance.history.last_chat_text
-        self.check_chat_history_limit()
-
-    @property
-    def other_context_token_limit(self) -> int:
-        return self.instance.config.record_other_context_token_limit if self.instance.is_group else 0
-
-    @property
-    def chat_context_token_limit(self) -> int:
-        return self.instance.config.record_chat_context_token_limit if self.instance.is_group else self.instance.config.record_chat_context_token_limit + self.instance.config.record_other_context_token_limit
+            self.chat_history.load((instance.history.other_history, instance.history.chat_history))
 
     def get_data_dict(self):
-        return {k: getattr(self, k) for k in self.data_keys}
+        return {k: getattr(self, k).get_data_dict() for k in self.history_keys}
 
     def set_next_auto_save_time(self, current_timestamp: float):
         self.next_auto_save_time = current_timestamp + (self.instance.config.auto_save_interval * 60)
@@ -184,58 +188,122 @@ class ChatHistory:
         except Exception as e:
             shared.logger.warning(f'{self.instance.chat_key} 的历史记录转换失败(v{version}): {repr(e)}')
         else:
-            for k in self.data_keys:
+            for k in self.history_keys:
                 value = pickle_data.get(k)
                 if value is not None:
-                    setattr(self, k, value)
+                    data: HistoryData = getattr(self, k)
+                    data.load_pickel_data(value)
 
-    async def get_chat_messages(self, extra_messages: Optional[list[BaseMessage]] = None, *, use_system_message=True, use_history=True) -> list[dict[str, str]]:
-        if use_system_message:
-            system_message = await self.instance.config.system_message
-            messages = [system_message] if system_message else []
-        else:
-            messages = []
-        if use_history:
-            histories = sorted(chain(self.other_history, self.chat_history), key=lambda x: x.timestamp)
-            messages.extend([await i.to_message() for i in histories])
-        if extra_messages is not None:
-            messages.extend([await i.to_message() for i in extra_messages])
-        return messages
-
-    def add_other_history(self, text: str, sender: str, auto_remove=True, *, token_count: Optional[int] = None):
+    def add_other_history(self, text: str, sender: str, auto_remove=True, *, token_count: Optional[int] = None) -> UserMessage:
         self.changed = True
-        if self.last_other_text == text:
-            self.other_history[-1].timestamp = time()
+        if self.other_history.is_last_text(text):
+            self.other_history.update_timestamp(-1)
         else:
-            self.last_other_text = text
-            message = UserMessage(text, sender, token_count=token_count, provide_username=self.instance.config.provide_username, provide_local_time=self.instance.config.provide_local_time)
-            self.other_history_token_count += message.token_count
-            self.other_history.append(message)
-            if auto_remove:
-                self.check_other_history_limit()
+            self.other_history.add_message(
+                UserMessage(
+                    text, sender, token_count=token_count,
+                    provide_username=self.instance.config.provide_username,
+                    provide_local_time=self.instance.config.provide_local_time
+                ),
+                text=text, check_limit=auto_remove
+            )
+        return self.other_history.last_message # type: ignore
 
-    def add_chat_history(self, text: str, sender: Optional[str] = None, auto_remove=True, *, token_count: Optional[int] = None):
+    def add_chat_history(self, text: str, sender: Optional[str] = None, auto_remove=True, *, token_count: Optional[int] = None) -> ModelMessage | UserMessage:
         self.changed = True
-        if sender is not None and self.last_chat_text == text:
-            self.chat_history[-1].timestamp = time()
+        if self.chat_history.is_last_text(text):
+            self.chat_history.update_timestamp(-1)
         else:
             self.last_chat_text = text
             if sender is None:
-                message = ModelMessage(text, token_count=token_count, provide_local_time=self.instance.config.provide_local_time)
+                message = ModelMessage(
+                    text, token_count=token_count,
+                    provide_local_time=self.instance.config.provide_local_time
+                )
             else:
-                message = UserMessage(text, sender, token_count=token_count, provide_username=self.instance.config.provide_username, provide_local_time=self.instance.config.provide_local_time)
-            self.chat_history_token_count += message.token_count
-            self.chat_history.append(message)
-            if auto_remove:
-                self.check_chat_history_limit()
+                message = UserMessage(
+                    text, sender, token_count=token_count,
+                    provide_username=self.instance.config.provide_username,
+                    provide_local_time=self.instance.config.provide_local_time
+                )
+            self.chat_history.add_message(message, text=text, check_limit=auto_remove)
+        return self.chat_history.last_message # type: ignore
 
-    def check_other_history_limit(self):
-        while len(self.other_history) > 0 and self.other_history_token_count > self.other_context_token_limit:
-            self.other_history_token_count -= self.other_history.popleft().token_count
 
-    def check_chat_history_limit(self):
-        while len(self.chat_history) > 0 and self.chat_history_token_count > self.chat_context_token_limit:
-            self.chat_history_token_count -= self.chat_history.popleft().token_count
+class HistoryData:
+    data_keys = ('deque', 'total_tokens', 'last_text')
+
+    def __init__(self, max_token_count: int, *, copy_from: Optional['HistoryData' | Iterable['HistoryData']] = None, _pickle_data: Optional[dict[str, Any]] = None) -> None:
+        self.deque: deque[BaseMessage]
+        self.total_tokens: int
+        self.last_text: Optional[str]
+        self.max_token_count = max_token_count
+        self._last_message = None
+        if copy_from is None:
+            if _pickle_data is None:
+                self.last_text = None
+                self.total_tokens = 0
+                self.deque = deque()
+            else:
+                self.load_pickel_data(_pickle_data)
+        else:
+            self.load(copy_from)
+
+    def __len__(self) -> int:
+        return self.deque.__len__()
+
+    @property
+    def last_message(self) -> Optional[BaseMessage]:
+        if self._last_message is None and self.deque:
+            self._last_message = self.deque[-1]
+        return self._last_message
+
+    def load(self, source: 'HistoryData' | Iterable['HistoryData']):
+        self._last_message = None
+        if isinstance(source, HistoryData):
+            self.deque = source.deque.copy()
+            self.last_text = source.last_text
+            self.total_tokens = source.total_tokens
+            self.check_limit()
+        elif isinstance(source, Iterable):
+            self.deque = deque(sorted(chain(*(i.deque for i in source)), key=lambda x: x.timestamp))
+            self.total_tokens = sum(i.total_tokens for i in source)
+            self.last_text = None
+
+    def copy(self) -> 'HistoryData':
+        return self.__class__(max_token_count=self.max_token_count, copy_from=self)
+
+    def load_pickel_data(self, data: dict[str, Any]):
+        for k, v in data.items():
+            setattr(self, k ,v)
+
+    def get_data_dict(self) -> dict[str, Any]:
+        return {k: getattr(self, k) for k in self.data_keys}
+
+    def is_last_text(self, text: str) -> bool:
+        return text == self.last_text
+
+    def update_timestamp(self, index: int, timestamp: Optional[float] = None):
+        self.deque[index].timestamp = time() if timestamp is None else timestamp
+
+    def add_message(self, message: UserMessage | ModelMessage, *, text: Optional[str] = None, check_limit=True):
+        self.total_tokens += message.token_count
+        self.deque.append(message)
+        self.last_text = message._content if text is None else text
+        self._last_message = message
+        if check_limit:
+            self.check_limit()
+
+    def check_limit(self):
+        while self.deque and self.total_tokens > self.max_token_count:
+            self.total_tokens -= self.deque.popleft().token_count
+
+
+#-----------------------------
+#
+#           外部方法
+#
+#-----------------------------
 
 
 async def get_chat_instance(matcher: type[Matcher], event: MessageEvent, bot: Bot) -> ChatInstance:

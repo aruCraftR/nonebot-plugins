@@ -11,10 +11,10 @@ from . import shared
 from .rule import rule_forbidden_id
 
 
-CMD_PREFIX = 'llm'
+CMD_PREFIX = 'rf'
 
 HELP_MSG = \
-"""LLM插件命令列表(标有*的为管理员命令)
+"""RAGFlow插件命令列表(标有*的为管理员命令)
 [...]: 选择其一 | <...>: 填入文本
 
 {cmd} new | 重置当前会话记录
@@ -25,8 +25,6 @@ HELP_MSG = \
 {cmd} load history <chat_key> | *更改当前会话的历史记录为<chat_key>的历史记录
 {cmd} change bot <bot_name> | *更改当前会话的机器人预设为<bot_name>
 {cmd} discard bot <bot_name> | *将当前会话的机器人预设恢复为默认
-{cmd} change [text/vision] model <model_name> | *更改当前会话的文本或视觉模型改为<model_name>
-{cmd} discard [text/vision] model <model_name> | *将当前会话的文本或视觉模型恢复为默认
 [注意: 全局操作仅对已加载的聊天实例生效]
 {cmd} global new | *重置全部会话记录
 {cmd} global info chat | *查看全部会话记录""".format(cmd=CMD_PREFIX)
@@ -53,14 +51,15 @@ cmd_reload = on_command(
 
 @cmd_reload.handle()
 async def reload_config():
+    await cmd_reload.send('正在重载配置文件')
     try:
-        shared.plugin_config.load_yaml()
+        await shared.plugin_config.reload_yaml()
         for i in get_chat_instances():
-            i.config.load_yaml()
+            await i.config.reload_yaml()
     except Exception as e:
-        await cmd_reload.finish(f'LLM插件配置重载失败: {repr(e)}')
+        await cmd_reload.finish(f'RAGFlow插件配置重载失败: {repr(e)}')
     else:
-        await cmd_reload.finish('LLM插件配置重载成功')
+        await cmd_reload.finish('RAGFlow插件配置重载成功')
 
 
 cmd_clear_history = on_command(
@@ -102,10 +101,10 @@ cmd_change_bot = on_command(
 async def change_bot_name(event: MessageEvent, bot: Bot, args: Message = CommandArg()):
     chat_instance = await get_chat_instance(cmd_change_bot, event, bot)
     bot_name = args.extract_plain_text()
-    if bot_name not in shared.plugin_config.system_prompts:
-        await cmd_change_bot.finish(f'系统提示词预设 {bot_name} 不存在\n当前可用预设: {', '.join(shared.plugin_config.system_prompts.keys())}')
-    chat_instance.config.set_value('bot_name', bot_name)
-    await cmd_change_bot.finish(f'已切换到系统提示词预设 {bot_name}\n提示词内容: {chat_instance.config.system_prompt}')
+    if await chat_instance.config.set_assistant(bot_name):
+        await cmd_change_bot.finish(f'已切换到机器人预设 {bot_name}')
+    else:
+        await cmd_change_bot.finish(f'机器人预设 {bot_name} 不存在')
 
 
 cmd_discard_bot = on_command(
@@ -117,8 +116,9 @@ cmd_discard_bot = on_command(
 @cmd_discard_bot.handle()
 async def discard_bot_name(event: MessageEvent, bot: Bot):
     chat_instance = await get_chat_instance(cmd_discard_bot, event, bot)
-    chat_instance.config.set_value('bot_name', DEFAULT)
-    await cmd_discard_bot.finish(f'已切换到默认系统提示词预设 {chat_instance.config.bot_name}\n提示词内容: {chat_instance.config.system_prompt}')
+    chat_instance.config.set_value('assistant_name', DEFAULT)
+    await chat_instance.config.init_ragflow_api()
+    await cmd_discard_bot.finish(f'已切换到默认机器人预设 {chat_instance.config.assistant_name}')
 
 
 cmd_change_text_model = on_command(
@@ -126,58 +126,6 @@ cmd_change_text_model = on_command(
     aliases={(CMD_PREFIX, 'c', 't', 'm')},
     permission=SUPERUSER
 )
-
-@cmd_change_text_model.handle()
-async def change_text_model_name(event: MessageEvent, bot: Bot, args: Message = CommandArg()):
-    chat_instance = await get_chat_instance(cmd_change_text_model, event, bot)
-    model_name = args.extract_plain_text()
-    if model_name not in shared.plugin_config.models:
-        await cmd_change_text_model.finish(f'模型名 {model_name} 不存在\n当前可用模型: {', '.join(shared.plugin_config.models.keys())}')
-    chat_instance.config.set_value('text_model_name', model_name)
-    await cmd_change_text_model.finish(f'已切换到模型 {model_name}\n模型标识名: {chat_instance.config.text_model_identifier}')
-
-
-cmd_discard_text_model = on_command(
-    (CMD_PREFIX, 'discard', 'text', 'model'),
-    aliases={(CMD_PREFIX, 'd', 't', 'm')},
-    permission=SUPERUSER
-)
-
-@cmd_discard_text_model.handle()
-async def discard_text_model_name(event: MessageEvent, bot: Bot):
-    chat_instance = await get_chat_instance(cmd_discard_text_model, event, bot)
-    chat_instance.config.set_value('text_model_name', DEFAULT)
-    await cmd_discard_text_model.finish(f'已切换到默认模型 {chat_instance.config.text_model_name}\n模型标识名: {chat_instance.config.text_model_identifier}')
-
-
-cmd_change_vision_model = on_command(
-    (CMD_PREFIX, 'change', 'vision', 'model'),
-    aliases={(CMD_PREFIX, 'c', 'v', 'm')},
-    permission=SUPERUSER
-)
-
-@cmd_change_vision_model.handle()
-async def change_vision_model_name(event: MessageEvent, bot: Bot, args: Message = CommandArg()):
-    chat_instance = await get_chat_instance(cmd_change_vision_model, event, bot)
-    model_name = args.extract_plain_text()
-    if model_name not in shared.plugin_config.models:
-        await cmd_change_vision_model.finish(f'模型名 {model_name} 不存在\n当前可用模型: {', '.join(shared.plugin_config.models.keys())}')
-    chat_instance.config.set_value('vision_model_name', model_name)
-    await cmd_change_vision_model.finish(f'已切换到模型 {model_name}\n模型标识名: {chat_instance.config.vision_model_identifier}')
-
-
-cmd_discard_vision_model = on_command(
-    (CMD_PREFIX, 'discard', 'vision', 'model'),
-    aliases={(CMD_PREFIX, 'd', 'v', 'm')},
-    permission=SUPERUSER
-)
-
-@cmd_discard_vision_model.handle()
-async def discard_vision_model_name(event: MessageEvent, bot: Bot):
-    chat_instance = await get_chat_instance(cmd_discard_vision_model, event, bot)
-    chat_instance.config.set_value('vision_model_name', DEFAULT)
-    await cmd_discard_vision_model.finish(f'已切换到默认模型 {chat_instance.config.vision_model_name}\n模型标识名: {chat_instance.config.vision_model_identifier}')
-
 
 cmd_info_chat = on_command(
     (CMD_PREFIX, 'info', 'chat'),
