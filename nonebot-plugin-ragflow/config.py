@@ -131,7 +131,7 @@ class BaseConfig:
 
 class PluginConfig(BaseConfig):
     start_comment = 'RAGFlow插件全局配置文件'
-    config_path = Path('data/llm/config.yml')
+    config_path = Path('data/ragflow/config.yml')
     config_checkers = {
         'enable': Item(bool, None, False, '是否启用'),
         'ragflow_api_v1': Item(str, None, 'https://api.openai.com/v1', '任意OpenAI标准的接口'),
@@ -274,7 +274,7 @@ class InstanceConfig(BaseConfig):
 
     @property
     def config_path(self) -> Path:
-        return Path('data/llm', self.chat_key, 'config.yml')
+        return Path('data/ragflow', self.chat_key, 'config.yml')
 
     async def reload_yaml(self) -> None:
         self.load_yaml()
