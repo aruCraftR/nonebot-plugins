@@ -5,7 +5,6 @@ from typing import Any, Iterable, Literal, Optional, TYPE_CHECKING, Self, Sequen
 
 from openai.types.chat.chat_completion import ChatCompletion
 from openai import OpenAIError
-from milvus_model.hybrid import BGEM3EmbeddingFunction
 
 from . import shared
 from .image import QQImage
@@ -226,6 +225,7 @@ bge_m3_ef: Any
 def init_local_bge_m3_mode():
     global bge_m3_ef
     if shared.plugin_config.use_local_bge_m3_model:
+        from milvus_model.hybrid import BGEM3EmbeddingFunction
         bge_m3_ef = BGEM3EmbeddingFunction(
             model_name='BAAI/bge-m3',
             device='cpu',
