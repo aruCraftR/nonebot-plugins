@@ -67,7 +67,10 @@ class AsyncMojangAPI:
             if shared.plugin_config.debug:
                 shared.logger.info(f'{player_name}使用缓存')
             return cls.PlayerInfo(**cache)
-        response = await cls.async_client.get(f'https://api.mojang.com/users/profiles/minecraft/{player_name}')
+        try:
+            response = await cls.async_client.get(f'https://api.mojang.com/users/profiles/minecraft/{player_name}')
+        except httpx.ConnectTimeout:
+            return None
         if response.is_success:
             json = cls.uuid_cache[player_name] = response.json()
             cls._cache_changed = True
