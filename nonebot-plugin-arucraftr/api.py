@@ -42,7 +42,7 @@ class AsyncMojangAPI:
             except Exception:
                 print_exc()
             else:
-                shared.logger.info(f'成功加载了{len(cls.cache)}条MojangAPI缓存')
+                shared.logger.info(f'成功加载了{len(cls.uuid_cache)}条MojangAPI缓存')
 
     @classmethod
     def save_cache(cls):
