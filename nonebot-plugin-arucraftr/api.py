@@ -2,6 +2,7 @@ import contextlib
 from dataclasses import dataclass
 from pathlib import Path
 import pickle
+import re
 from typing import AsyncGenerator, Generator, Iterable, Optional
 import httpx
 
@@ -28,6 +29,7 @@ class AsyncMojangAPI:
     uuid_cache = {}
     _cache_changed = False
     cahce_file = Path(shared.data_path, 'uuid_cache.pickle')
+    player_name_regex = re.compile(r'^\w+$')
 
     @classmethod
     def load_cache(cls):
@@ -63,6 +65,8 @@ class AsyncMojangAPI:
 
     @classmethod
     async def get_online_uuid(cls, player_name: str, use_cache=True) -> Optional[PlayerInfo]:
+        if not cls.player_name_regex.match(player_name):
+            return None
         if use_cache and (cache := cls.uuid_cache.get(player_name)) is not None:
             if shared.plugin_config.debug:
                 shared.logger.info(f'{player_name}使用缓存')
