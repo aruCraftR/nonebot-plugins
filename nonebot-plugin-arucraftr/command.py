@@ -99,6 +99,7 @@ async def get_whitelist(args: Message = CommandArg()):
     if user_indent := args.extract_plain_text():
         if user_indent.isdigit():
             indent = int(user_indent)
+    await cmd_get_whitelist.send('正在从MojangAPI获取正版玩家信息, 请耐心等待')
     try:
         json, success, failure = await get_whitelist_json(indent)
     except Exception as e:
