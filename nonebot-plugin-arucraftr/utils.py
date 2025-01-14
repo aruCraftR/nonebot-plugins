@@ -106,6 +106,9 @@ async def update_member_data(bot: Bot):
     for info in admin_member_list:
         if (nickname := info.get('nickname')) is None:
             return
-        info['card'] = info.get('card') or nickname
-        info['last_sent_time'] = max(info.get('last_sent_time', 0), info.get('join_time', 0))
-        shared.member_info[info['user_id']] = MemberInfo(**info)
+        shared.member_info[info['user_id']] = MemberInfo(
+            user_id = info['user_id'],
+            card = info.get('card') or nickname,
+            last_sent_time = max(info.get('last_sent_time', 0), info.get('join_time', 0)),
+            role = info['role']
+        )
