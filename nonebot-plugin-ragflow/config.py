@@ -7,7 +7,7 @@ from httpx import Timeout
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
-import async_ragflow
+from . import async_ragflow
 from . import shared
 
 DEFAULT = 'default'

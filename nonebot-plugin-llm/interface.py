@@ -221,12 +221,16 @@ class ChatCompletionRequest:
         return self
 
 
-if shared.plugin_config.use_local_bge_m3_model:
-    bge_m3_ef = BGEM3EmbeddingFunction(
-        model_name='BAAI/bge-m3',
-        device='cpu',
-        use_fp16=False
-    )
+bge_m3_ef: Any
+
+def init_local_bge_m3_mode():
+    global bge_m3_ef
+    if shared.plugin_config.use_local_bge_m3_model:
+        bge_m3_ef = BGEM3EmbeddingFunction(
+            model_name='BAAI/bge-m3',
+            device='cpu',
+            use_fp16=False
+        )
 
 
 async def embedding_documents(text: str | list[str]):

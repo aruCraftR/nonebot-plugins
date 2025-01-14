@@ -164,7 +164,7 @@ class PluginConfig(BaseConfig):
         super().apply_yaml()
         if self.use_proxy:
             self.proxy = Proxy(self.proxy_url)
-        start_async_client()
 
 
 shared.plugin_config = PluginConfig()
+start_async_client()

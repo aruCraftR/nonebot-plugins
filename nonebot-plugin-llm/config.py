@@ -7,7 +7,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from openai import AsyncOpenAI
 
-from .interface import SystemMessage
+from .interface import SystemMessage, init_local_bge_m3_mode
 from . import shared
 
 DEFAULT = 'default'
@@ -460,3 +460,4 @@ class InstanceConfig(LLMConfig):
 
 
 shared.plugin_config = PluginConfig()
+init_local_bge_m3_mode()
