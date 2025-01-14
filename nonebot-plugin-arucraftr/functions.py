@@ -10,6 +10,7 @@ from nonebot.adapters.onebot.v11 import Event, MessageEvent, PrivateMessageEvent
 
 from .api import AsyncMojangAPI
 from . import shared
+from .utils import is_active_member
 
 
 async def update_admin_id_set(bot: Bot):
@@ -43,7 +44,7 @@ async def update_member_data(bot: Bot):
 
 def get_active_members() -> Generator[MemberInfo]:
     now = time()
-    return (i for i in shared.member_info.values() if now - i.last_sent_time <= shared.plugin_config.active_threshold_timestamp)
+    return (i for i in shared.member_info.values() if is_active_member(i, now))
 
 
 async def create_whitelist_file() -> tuple[Path, int, int]:

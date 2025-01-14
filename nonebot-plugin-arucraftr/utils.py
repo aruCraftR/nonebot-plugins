@@ -1,9 +1,11 @@
 
+from time import time
 from typing import NamedTuple, Union, Optional
 
 from nonebot.adapters.onebot.v11 import Event, MessageEvent, PrivateMessageEvent, GroupMessageEvent, GroupIncreaseNoticeEvent, Bot
 
 from . import shared
+from .functions import MemberInfo
 
 
 def is_anonymous(event: Event):
@@ -84,3 +86,9 @@ async def get_chat_type(event: MessageEvent) -> tuple[str, Optional[bool]]:
         if shared.plugin_config.debug:
             shared.logger.info(f'未知消息来源: {event.get_session_id()}')
         return f'unknown_{event.get_session_id()}', None
+
+
+async def is_active_member(member_info: MemberInfo, timestamp: Optional[float] = None) -> bool:
+    if timestamp is None:
+        timestamp = time()
+    return member_info.user_id in shared.admin_id_set or timestamp - member_info.last_sent_time <= shared.plugin_config.active_threshold_timestamp

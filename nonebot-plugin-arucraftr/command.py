@@ -1,9 +1,9 @@
 
+from traceback import print_exc
 from uuid import UUID
 
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent, Bot, Message
-from nonebot.adapters.onebot.v12 import MessageEvent, Bot, Message
 from nonebot.adapters.onebot.v11.permission import PRIVATE_FRIEND, GROUP
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
@@ -99,5 +99,13 @@ async def get_whitelist(args: Message = CommandArg()):
     if user_indent := args.extract_plain_text():
         if user_indent.isdigit():
             indent = int(user_indent)
-    json, success, failure = await get_whitelist_json(indent)
+    try:
+        json, success, failure = await get_whitelist_json(indent)
+    except Exception as e:
+        print_exc()
+        await cmd_get_whitelist.finish(f'出现错误: {repr(e)}')
+    if success + failure == 0:
+        await cmd_get_whitelist.finish('当前没有任何活跃玩家')
+    if success == 0:
+        await cmd_get_whitelist.finish('无法访问MojangAPI')
     await cmd_get_whitelist.finish(f'{json}\n包含了{success}个玩家, {failure}个玩家获取失败)')
