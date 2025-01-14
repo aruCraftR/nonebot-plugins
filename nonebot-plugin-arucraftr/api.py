@@ -41,6 +41,8 @@ class AsyncMojangAPI:
                 cls.cache = pickle.load(f)
             except Exception:
                 print_exc()
+            else:
+                shared.logger.info(f'成功加载了{len(cls.cache)}条MojangAPI缓存')
 
     @classmethod
     def save_cache(cls):
