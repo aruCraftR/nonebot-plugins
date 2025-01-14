@@ -38,7 +38,7 @@ class AsyncMojangAPI:
             return
         with cls.cahce_file.open('rb') as f:
             try:
-                cls.cache = pickle.load(f)
+                cls.uuid_cache = pickle.load(f)
             except Exception:
                 print_exc()
             else:
