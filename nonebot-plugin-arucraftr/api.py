@@ -65,6 +65,7 @@ class AsyncMojangAPI:
 
     @classmethod
     async def get_online_uuid(cls, player_name: str, use_cache=True) -> Optional[PlayerInfo]:
+        player_name = player_name.strip()
         if not cls.player_name_regex.match(player_name):
             return None
         if use_cache and ((cache := cls.uuid_cache.get(player_name)) is not None):
