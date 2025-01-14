@@ -93,11 +93,11 @@ cmd_get_whitelist = on_command(
     permission=ADMIN_PERMISSION
 )
 
-@cmd_get_uuid.handle()
+@cmd_get_whitelist.handle()
 async def get_whitelist(args: Message = CommandArg()):
     indent = None
     if user_indent := args.extract_plain_text():
         if user_indent.isdigit():
             indent = int(user_indent)
     json, success, failure = await get_whitelist_json(indent)
-    await cmd_get_uuid.finish(f'{json}\n包含了{success}个玩家, {failure}个玩家获取失败)')
+    await cmd_get_whitelist.finish(f'{json}\n包含了{success}个玩家, {failure}个玩家获取失败)')
