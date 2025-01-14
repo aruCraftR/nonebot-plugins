@@ -1,5 +1,4 @@
 
-from dataclasses import dataclass
 from typing import NamedTuple, Union, Optional
 
 from nonebot.adapters.onebot.v11 import Event, MessageEvent, PrivateMessageEvent, GroupMessageEvent, GroupIncreaseNoticeEvent, Bot
@@ -85,30 +84,3 @@ async def get_chat_type(event: MessageEvent) -> tuple[str, Optional[bool]]:
         if shared.plugin_config.debug:
             shared.logger.info(f'未知消息来源: {event.get_session_id()}')
         return f'unknown_{event.get_session_id()}', None
-
-
-async def update_admin_id_set(bot: Bot):
-    admin_member_list = await bot.get_group_member_list(group_id=shared.plugin_config.admin_group)
-    shared.admin_id_set = {i['user_id'] for i in admin_member_list}
-
-
-@dataclass
-class MemberInfo:
-    user_id: int
-    card: str
-    last_sent_time: int
-    role: str
-
-
-async def update_member_data(bot: Bot):
-    admin_member_list = await bot.get_group_member_list(group_id=shared.plugin_config.main_group)
-    shared.member_info.clear()
-    for info in admin_member_list:
-        if (nickname := info.get('nickname')) is None:
-            return
-        shared.member_info[info['user_id']] = MemberInfo(
-            user_id = info['user_id'],
-            card = info.get('card') or nickname,
-            last_sent_time = max(info.get('last_sent_time', 0), info.get('join_time', 0)),
-            role = info['role']
-        )

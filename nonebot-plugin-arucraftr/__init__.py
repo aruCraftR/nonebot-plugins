@@ -7,10 +7,11 @@ from . import config
 
 if shared.plugin_config.enable:
     from . import command
-    from .utils import update_admin_id_set, update_member_data
+    from .functions import update_admin_id_set, update_member_data
 
     driver = get_driver()
     shared.nonebot_config = driver.config
+
 
     @driver.on_bot_connect
     async def on_bot_connect(bot: Bot):

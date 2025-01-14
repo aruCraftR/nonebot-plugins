@@ -1,5 +1,8 @@
+import contextlib
 from dataclasses import dataclass
-from typing import AsyncGenerator, Generator, Iterable
+from pathlib import Path
+import pickle
+from typing import AsyncGenerator, Generator, Iterable, Optional
 import httpx
 
 from . import shared
@@ -22,6 +25,25 @@ def start_async_client():
 
 class AsyncMojangAPI:
     async_client: httpx.AsyncClient
+    uuid_cache = {}
+    _cache_changed = False
+    cahce_file = Path(shared.data_path, 'uuid_cache.pickle')
+
+    @classmethod
+    def load_cache(cls):
+        if not cls.cahce_file.exists():
+            return
+        with cls.cahce_file.open('rb') as f:
+            with contextlib.suppress(Exception):
+                cls.cache = pickle.load(f)
+
+    @classmethod
+    def save_cache(cls):
+        if not cls._cache_changed:
+            return
+        with cls.cahce_file.open('wb') as f:
+            pickle.dump(cls.uuid_cache, f)
+        cls._cache_changed = False
 
     @classmethod
     def start_async_client(cls):
@@ -40,9 +62,15 @@ class AsyncMojangAPI:
         name: str
 
     @classmethod
-    async def get_online_uuid(cls, player_name: str) -> PlayerInfo:
+    async def get_online_uuid(cls, player_name: str, use_cache=True) -> Optional[PlayerInfo]:
+        if use_cache and (cache := cls.uuid_cache.get(player_name)) is not None:
+            return cls.PlayerInfo(**cache)
         response = await cls.async_client.get(f'https://api.mojang.com/users/profiles/minecraft/{player_name}')
-        return cls.PlayerInfo(**response.json())
+        if response.is_success:
+            json = cls.uuid_cache[player_name] = response.json()
+            cls._cache_changed = True
+            return cls.PlayerInfo(**json)
+        return None
 
     @classmethod
     async def get_online_uuid_list(cls, player_names: Iterable[str]) -> list[PlayerInfo]:

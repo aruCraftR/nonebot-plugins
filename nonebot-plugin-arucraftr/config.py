@@ -133,7 +133,7 @@ class BaseConfig:
 
 class PluginConfig(BaseConfig):
     start_comment = 'aruCraftR插件全局配置文件'
-    config_path = Path('data/arucraftr/config.yml')
+    config_path = Path(shared.data_path, 'config.yml')
     config_checkers = {
         'enable': Item(bool, None, False, '是否启用'),
         'use_proxy': Item(bool, None, False, '是否使用代理连接外部API'),
