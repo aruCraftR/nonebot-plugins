@@ -51,6 +51,7 @@ class AsyncMojangAPI:
     def start_async_client(cls):
         transport = httpx.AsyncHTTPTransport(retries=3, proxy=shared.plugin_config.proxy)
         cls.async_client = httpx.AsyncClient(transport=transport)
+        cls.load_cache()
 
     @classmethod
     async def refresh_async_client(cls):
