@@ -67,11 +67,13 @@ class AsyncMojangAPI:
     async def get_online_uuid(cls, player_name: str, use_cache=True) -> Optional[PlayerInfo]:
         if not cls.player_name_regex.match(player_name):
             return None
-        if use_cache and (cache := cls.uuid_cache.get(player_name)) is not None:
+        if use_cache and ((cache := cls.uuid_cache.get(player_name)) is not None):
             if shared.plugin_config.debug:
                 shared.logger.info(f'{player_name}使用缓存')
             return cls.PlayerInfo(**cache)
         try:
+            if shared.plugin_config.debug:
+                shared.logger.info(f'正在获取{player_name}的玩家数据')
             response = await cls.async_client.get(f'https://api.mojang.com/users/profiles/minecraft/{player_name}')
         except httpx.ConnectTimeout:
             return None

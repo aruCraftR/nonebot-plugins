@@ -10,7 +10,7 @@ from .utils import is_active_member
 
 async def active_member(event: MessageEvent) -> bool:
     if member_info := shared.member_info.get(event.user_id):
-        return await is_active_member(member_info)
+        return is_active_member(member_info)
     return False
 
 

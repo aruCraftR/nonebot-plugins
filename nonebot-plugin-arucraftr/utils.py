@@ -90,7 +90,7 @@ async def get_chat_type(event: MessageEvent) -> tuple[str, Optional[bool]]:
         return f'unknown_{event.get_session_id()}', None
 
 
-async def is_active_member(member_info: 'MemberInfo', timestamp: Optional[float] = None) -> bool:
+def is_active_member(member_info: 'MemberInfo', timestamp: Optional[float] = None) -> bool:
     if timestamp is None:
         timestamp = time()
     if shared.plugin_config.debug:
