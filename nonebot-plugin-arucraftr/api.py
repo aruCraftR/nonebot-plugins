@@ -29,7 +29,7 @@ class AsyncMojangAPI:
     uuid_cache = {}
     _cache_changed = False
     cahce_file = Path(shared.data_path, 'uuid_cache.pickle')
-    player_name_regex = re.compile(r'^\w+$')
+    player_name_regex = re.compile(r'^[A-Za-z0-9_]+$')
 
     @classmethod
     def load_cache(cls):
