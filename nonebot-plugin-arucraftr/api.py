@@ -64,6 +64,8 @@ class AsyncMojangAPI:
     @classmethod
     async def get_online_uuid(cls, player_name: str, use_cache=True) -> Optional[PlayerInfo]:
         if use_cache and (cache := cls.uuid_cache.get(player_name)) is not None:
+            if shared.plugin_config.debug:
+                shared.logger.info(f'{player_name}使用缓存')
             return cls.PlayerInfo(**cache)
         response = await cls.async_client.get(f'https://api.mojang.com/users/profiles/minecraft/{player_name}')
         if response.is_success:
