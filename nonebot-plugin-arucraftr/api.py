@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import pickle
 import re
+from traceback import print_exc
 from typing import AsyncGenerator, Generator, Iterable, Optional
 import httpx
 
@@ -36,8 +37,10 @@ class AsyncMojangAPI:
         if not cls.cahce_file.exists():
             return
         with cls.cahce_file.open('rb') as f:
-            with contextlib.suppress(Exception):
+            try:
                 cls.cache = pickle.load(f)
+            except Exception:
+                print_exc()
 
     @classmethod
     def save_cache(cls):
