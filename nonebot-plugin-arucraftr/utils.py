@@ -1,11 +1,13 @@
 
 from time import time
-from typing import NamedTuple, Union, Optional
+from typing import NamedTuple, Union, Optional, TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Event, MessageEvent, PrivateMessageEvent, GroupMessageEvent, GroupIncreaseNoticeEvent, Bot
 
 from . import shared
-from .functions import MemberInfo
+
+if TYPE_CHECKING:
+    from .functions import MemberInfo
 
 
 def is_anonymous(event: Event):
