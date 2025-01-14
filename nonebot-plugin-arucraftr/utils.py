@@ -94,5 +94,5 @@ async def is_active_member(member_info: 'MemberInfo', timestamp: Optional[float]
     if timestamp is None:
         timestamp = time()
     if shared.plugin_config.debug:
-        shared.logger.debug(f'{member_info.card} 上次活跃时间戳{member_info.last_sent_time}')
+        shared.logger.info(f'{member_info.card} 上次活跃时间戳{member_info.last_sent_time}')
     return (member_info.user_id in shared.admin_id_set) or ((timestamp - member_info.last_sent_time) <= shared.plugin_config.active_threshold_timestamp)
