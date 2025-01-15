@@ -79,7 +79,7 @@ class AsyncMcsmAPI:
             case 400:
                 raise McsmAPIParameterError(response.url)
             case 403:
-                raise McsmAPIPermissionError(f'API key: {cls.api_key}')
+                raise McsmAPIPermissionError(f'API key: {cls.api_key}\nURL: {response.url}')
             case 500:
                 raise McsmAPIInternalError()
             case _:
