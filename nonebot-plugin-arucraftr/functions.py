@@ -29,11 +29,11 @@ class MemberInfo:
 
 
 async def update_member_data(bot: Bot):
-    admin_member_list = await bot.get_group_member_list(group_id=shared.plugin_config.main_group)
+    member_list = await bot.get_group_member_list(group_id=shared.plugin_config.main_group)
     shared.member_info.clear()
-    for info in admin_member_list:
-        if (nickname := info.get('nickname')) is None:
-            return
+    for info in member_list:
+        if (nickname := info.get('nickname')) is None or info['user_id'] in shared.plugin_config.forbidden_users:
+            continue
         shared.member_info[info['user_id']] = MemberInfo(
             user_id = info['user_id'],
             card = info.get('card') or nickname,

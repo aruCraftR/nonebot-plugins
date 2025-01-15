@@ -15,20 +15,17 @@ def is_anonymous(event: Event):
     return getattr(event, 'anonymous', None) is not None and getattr(event, 'sub_type', None) == 'anonymous'
 
 
-async def get_user_name(event: Union[MessageEvent, GroupIncreaseNoticeEvent], bot: Bot, user_id: int) -> Optional[str]:
-    raise NotImplementedError
+async def get_user_name(event: Union[MessageEvent, GroupIncreaseNoticeEvent], bot: Bot, user_id: int) -> str:
     if is_anonymous(event):
         return f'[匿名]{event.anonymous.name}' # type: ignore
 
+    if sender := shared.member_info.get(user_id):
+        return sender.card
+
     if isinstance(event, (GroupMessageEvent, GroupIncreaseNoticeEvent)):
         user_info = await bot.get_group_member_info(group_id=event.group_id, user_id=user_id)
-        user_name = user_info.get('nickname', None)
-        if shared.plugin_config.use_group_card:
-            user_name = user_info.get('card', None) or user_name
-    else:
-        user_name = event.sender.nickname if event.sender else event.get_user_id()
-
-    return user_name
+        return user_info.get('card', None) or user_info.get('nickname', '未知')
+    return event.sender.nickname if event.sender else event.get_user_id() # type: ignore
 
 
 class UniformedMessage(NamedTuple):
@@ -68,8 +65,7 @@ async def uniform_chat_text(event: MessageEvent, bot: Bot, use_raw=False) -> Uni
                     msgs.append(name)
             case 'image':    # 图像表情
                 if summary := seg.data.get('summary'):
-                    if summary != '[动画表情]':
-                        msgs.append(summary)
+                    msgs.append(summary)
                 elif url := seg.data.get('url'):
                     img_urls.append(url)
             case 'poke':     # 戳一戳

@@ -1,13 +1,16 @@
-import contextlib
+
 from dataclasses import dataclass
 from pathlib import Path
 import pickle
 import re
 from traceback import print_exc
-from typing import AsyncGenerator, Generator, Iterable, Optional
+from typing import AsyncGenerator, Generator, Iterable, Optional, TYPE_CHECKING
 import httpx
 
 from . import shared
+
+if TYPE_CHECKING:
+    from .config import McsmInstanceData
 
 inited = False
 
@@ -23,6 +26,75 @@ def start_async_client():
     for i in api_list:
         i.start_async_client()
     inited = True
+
+
+class McsmAPIError(Exception):
+    pass
+
+
+class McsmAPIParameterError(McsmAPIError):
+    pass
+
+
+class McsmAPIPermissionError(McsmAPIError):
+    pass
+
+
+class McsmAPIInternalError(McsmAPIError):
+    pass
+
+
+class McsmAPIUnknownStatusCodeError(McsmAPIError):
+    pass
+
+
+class AsyncMcsmAPI:
+    async_client: httpx.AsyncClient
+    base_url: str
+    api_key: str
+
+    @classmethod
+    def start_async_client(cls):
+        cls.async_client = httpx.AsyncClient()
+        cls.update_config()
+
+    @classmethod
+    async def refresh_async_client(cls):
+        cls.update_config()
+
+    @classmethod
+    def update_config(cls):
+        cls.base_url = shared.plugin_config.mcsm_api_url
+        cls.api_key = shared.plugin_config.mcsm_api_key
+
+    @classmethod
+    def get_full_url(cls, path: str):
+        return f'{cls.base_url}/{path}'
+
+    @classmethod
+    def check_status_code(cls, response: httpx.Response):
+        match response.status_code:
+            case 200:
+                return
+            case 400:
+                raise McsmAPIParameterError(response.url)
+            case 403:
+                raise McsmAPIPermissionError(f'API key: {cls.api_key}')
+            case 500:
+                raise McsmAPIInternalError()
+            case _:
+                raise McsmAPIUnknownStatusCodeError(response.status_code)
+
+    @classmethod
+    async def send_command(cls, instance_data: 'McsmInstanceData', command: str) -> bool:
+        response = await cls.async_client.get(cls.get_full_url('protected_instance/command'), params=httpx.QueryParams(
+            api_key=cls.api_key,
+            uuid=instance_data.instance_id,
+            daemonId=instance_data.node_id,
+            command=command
+        ))
+        cls.check_status_code(response)
+        return response.is_success
 
 
 class AsyncMojangAPI:

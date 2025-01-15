@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 import os
 from typing import Any, Callable, Generator, NamedTuple, Optional, Tuple
@@ -33,6 +34,7 @@ INT_LIST = Filter(lambda x: isinstance(x, int))
 NUM_LIST = Filter(lambda x: isinstance(x, (int, float)))
 STR_LIST = Filter(lambda x: isinstance(x, str))
 NUMBER_TYPE = (int, float)
+HTTPX_STR = lambda x: x.startswith('http')
 
 
 class Item(NamedTuple):
@@ -131,16 +133,28 @@ class BaseConfig:
             self.save_yaml()
 
 
+@dataclass
+class McsmInstanceData:
+    instance_aliase: str
+    node_id: str
+    instance_id: str
+
+
 class PluginConfig(BaseConfig):
     start_comment = 'aruCraftR插件全局配置文件'
     config_path = Path(shared.data_path, 'config.yml')
     config_checkers = {
         'enable': Item(bool, None, False, '是否启用'),
         'use_proxy': Item(bool, None, False, '是否使用代理连接外部API'),
-        'proxy_url': Item(str, lambda x: x.startswith('http'), 'http://127.0.0.1:7890', '代理地址, 如 http://127.0.0.1:7890'),
+        'proxy_url': Item(str, HTTPX_STR, 'http://127.0.0.1:7890', '代理地址, 如 http://127.0.0.1:7890'),
         'main_group': Item(int, None, -1, '主群群号'),
         'admin_group': Item(int, None, -1, '管理组群号'),
+        'mcsm_api_url': Item(str, HTTPX_STR, 'https://example.com/api', 'MCSM的API地址(xxx/api)'),
+        'mcsm_api_key': Item(str, None, 'xxx', 'MCSM的API密钥'),
+        'mcsm_instances': Item(dict, (STR_DICT_KV, Filter(lambda k, v: len(v.split(':') == 2))), {'example': 'node_id:instance_id'}),
         'active_days_threshold': Item(int, lambda x: -1 <= x, -1, '群成员活跃判定阈值(距离上次发送消息)'),
+        'message_forwarding_format': Item(str, None, '{"text":"[QQ] <【name】> 【text】","color":"gray"}', '消息转发格式, 【name】为用户名, 【text】为内容'),
+        'forbidden_users': Item(list, INT_LIST, [], '禁止触发的QQ号'),
         'debug': Item(bool, None, False, '调试模式')
     }
 
@@ -149,7 +163,14 @@ class PluginConfig(BaseConfig):
     proxy_url: str
     main_group: int
     admin_group: int
+    mcsm_api_url: str
+    mcsm_api_key: str
+    mcsm_instances: dict[str, str]
+    mcsm_instances_data: dict[str, McsmInstanceData]
+    mcsm_instances_list: list[McsmInstanceData]
     active_days_threshold: int
+    message_forwarding_format: str
+    forbidden_users: list[int]
     debug: bool
 
     @property
@@ -159,11 +180,25 @@ class PluginConfig(BaseConfig):
     def __init__(self) -> None:
         super().__init__()
         self.proxy: Optional[Proxy] = None
+        self._message_forwarding_format = '《"text":"[QQ] <{name}> {text}","color":"gray"》'
 
     def apply_yaml(self) -> None:
         super().apply_yaml()
         if self.use_proxy:
             self.proxy = Proxy(self.proxy_url)
+        self._message_forwarding_format = self.message_forwarding_format.replace('{', '《').replace('}', '》').replace('【', '{').replace('】', '}')
+
+    def create_mcsm_instances_data(self):
+        self.mcsm_instances_data = {
+            k: McsmInstanceData(
+                k, *v.split(':', 2)
+            )
+            for k, v in self.mcsm_instances.items()
+        }
+        self.mcsm_instances_list = list(self.mcsm_instances_data.values())
+
+    def apply_forwarding_format(self, name: str, text: str) -> str:
+        return self._message_forwarding_format.format(name=name, text=text).replace('《', '{').replace('》', '}')
 
 
 shared.plugin_config = PluginConfig()
