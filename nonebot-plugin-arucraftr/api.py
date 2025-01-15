@@ -4,7 +4,7 @@ from pathlib import Path
 import pickle
 import re
 from traceback import print_exc
-from typing import AsyncGenerator, Generator, Iterable, Optional, TYPE_CHECKING
+from typing import AsyncGenerator, Generator, Iterable, Optional, TYPE_CHECKING, Sequence
 import httpx
 
 from . import shared
@@ -86,12 +86,12 @@ class AsyncMcsmAPI:
                 raise McsmAPIUnknownStatusCodeError(response.status_code)
 
     @classmethod
-    async def send_command(cls, instance_data: 'McsmInstanceData', command: str) -> bool:
+    async def send_command(cls, instance_data: 'McsmInstanceData', commands: str | Sequence[str]) -> bool:
         response = await cls.async_client.get(cls.get_full_url('protected_instance/command'), params=httpx.QueryParams(
             apikey=cls.api_key,
             uuid=instance_data.instance_id,
             daemonId=instance_data.node_id,
-            command=f'{command}\n'
+            command=f'{commands}\n' if isinstance(commands, str) else f'{'\n'.join(commands)}\n'
         ))
         cls.check_status_code(response)
         return response.is_success

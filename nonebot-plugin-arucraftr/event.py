@@ -63,8 +63,11 @@ async def main_group_request_handler(event: RequestEvent):
     if isinstance(event, GroupRequestEvent):
         for i in shared.plugin_config.mcsm_instances_list:
             try:
-                await AsyncMcsmAPI.send_command(i, 'title @a[tag=admin] title "提醒"')
-                await AsyncMcsmAPI.send_command(i, 'title @a[tag=admin] subtitle "有新的入群申请待审批"')
+                await AsyncMcsmAPI.send_command(i, [
+                    'title @a[tag=admin] title "提醒"',
+                    'title @a[tag=admin] subtitle "有新的入群申请待审批"',
+                    'tellraw @a[tag=admin] {"text":"[QQ提醒] 有新的入群申请待审批","bold":true,"underlined":true,"color":"red"}'
+                ])
             except Exception as e:
                 shared.logger.warning(f'提醒入群申请到{i.instance_aliase}时出现问题: {repr(e)}')
 
