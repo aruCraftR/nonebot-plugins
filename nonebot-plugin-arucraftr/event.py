@@ -18,7 +18,7 @@ admin_group_message = on_message(
     rule=rule_from_admin_group & rule_forbidden_id & rule_available_message
 )
 
-main_group_notice = on_notice(rule=rule_forbidden_id, permission=permission_main_group, priority=5000, block=False)
+main_group_notice = on_notice(permission=permission_main_group, priority=5000, block=False)
 
 admin_group_notice = on_notice(permission=permission_admin_group, priority=5000, block=False)
 

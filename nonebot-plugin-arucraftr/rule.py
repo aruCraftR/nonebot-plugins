@@ -1,6 +1,6 @@
 import contextlib
 
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, NoticeEvent
 from nonebot.rule import Rule
 
 from . import shared
