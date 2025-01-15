@@ -187,6 +187,7 @@ class PluginConfig(BaseConfig):
         if self.use_proxy:
             self.proxy = Proxy(self.proxy_url)
         self._message_forwarding_format = self.message_forwarding_format.replace('{', '《').replace('}', '》').replace('【', '{').replace('】', '}')
+        self.create_mcsm_instances_data()
 
     def create_mcsm_instances_data(self):
         self.mcsm_instances_data = {
