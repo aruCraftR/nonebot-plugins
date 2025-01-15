@@ -168,4 +168,4 @@ class AsyncMojangAPI:
         return [cls.PlayerInfo(**i) for i in response.json()]
 
 
-api_list = (AsyncMojangAPI,)
+api_list = (AsyncMojangAPI, AsyncMcsmAPI)
