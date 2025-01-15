@@ -5,6 +5,7 @@ from typing import NamedTuple, Union, Optional, TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import Event, MessageEvent, PrivateMessageEvent, GroupMessageEvent, GroupIncreaseNoticeEvent, Bot
 
 from . import shared
+from .name import EMOJI_NAME
 
 if TYPE_CHECKING:
     from .functions import MemberInfo
@@ -62,8 +63,8 @@ async def uniform_chat_text(event: MessageEvent, bot: Bot, use_raw=False) -> Uni
                         msgs.append(f'@{user_name}')
             case 'face':     # Emoji
                 if name := EMOJI_NAME.get(seg.data.get('id')): # type: ignore
-                    msgs.append(name)
-            case 'image':    # 图像表情
+                    msgs.append(f'[{name}]')
+            case 'image':    # 图像
                 if summary := seg.data.get('summary'):
                     msgs.append(summary)
                 else:
@@ -72,7 +73,7 @@ async def uniform_chat_text(event: MessageEvent, bot: Bot, use_raw=False) -> Uni
                 #     img_urls.append(url)
             case 'poke':     # 戳一戳
                 if name := seg.data.get('name'):
-                    msgs.append(name)
+                    msgs.append(f'[{name}]')
     return UniformedMessage(wake_up, ''.join(msgs), img_urls)
 
 
