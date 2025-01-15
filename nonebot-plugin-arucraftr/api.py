@@ -88,7 +88,7 @@ class AsyncMcsmAPI:
     @classmethod
     async def send_command(cls, instance_data: 'McsmInstanceData', command: str) -> bool:
         response = await cls.async_client.get(cls.get_full_url('protected_instance/command'), params=httpx.QueryParams(
-            api_key=cls.api_key,
+            apikey=cls.api_key,
             uuid=instance_data.instance_id,
             daemonId=instance_data.node_id,
             command=command
