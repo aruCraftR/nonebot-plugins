@@ -27,7 +27,7 @@ async def main_group_message_handler(event: MessageEvent, bot: Bot):
     if not (text := (await uniform_chat_text(event, bot)).text):
         return
     sender_name = await get_user_name(event, bot, event.user_id)
-    json = shared.plugin_config.apply_forwarding_format(sender_name, text)
+    json = shared.plugin_config.apply_forwarding_format(sender_name, text, group='QQ')
     if shared.plugin_config.debug:
         shared.logger.info(f'正在转发消息: {json}')
     for i in shared.plugin_config.mcsm_instances_list:
@@ -42,7 +42,7 @@ async def admin_group_message_handler(event: MessageEvent, bot: Bot):
     if not (text := (await uniform_chat_text(event, bot)).text):
         return
     sender_name = await get_user_name(event, bot, event.user_id)
-    json = shared.plugin_config.apply_forwarding_format(sender_name, text)
+    json = shared.plugin_config.apply_forwarding_format(sender_name, text, group='管理群')
     if shared.plugin_config.debug:
         shared.logger.info(f'正在转发消息: {json}')
     for i in shared.plugin_config.mcsm_instances_list:

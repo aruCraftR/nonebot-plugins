@@ -91,7 +91,7 @@ class AsyncMcsmAPI:
             apikey=cls.api_key,
             uuid=instance_data.instance_id,
             daemonId=instance_data.node_id,
-            command=command
+            command=f'{command}\n'
         ))
         cls.check_status_code(response)
         return response.is_success

@@ -153,7 +153,7 @@ class PluginConfig(BaseConfig):
         'mcsm_api_key': Item(str, None, 'xxx', 'MCSM的API密钥'),
         'mcsm_instances': Item(dict, (STR_DICT_KV, Filter(lambda k, v: len(v.split(':')) == 2)), {'example': 'node_id:instance_id'}),
         'active_days_threshold': Item(int, lambda x: -1 <= x, -1, '群成员活跃判定阈值(距离上次发送消息)'),
-        'message_forwarding_format': Item(str, None, '{"text":"[QQ] <【name】> 【text】","color":"gray"}', '消息转发格式, 【name】为用户名, 【text】为内容'),
+        'message_forwarding_format': Item(str, None, '{"text":"[【group】] <【name】> 【text】","color":"gray"}', '消息转发格式, 【name】为用户名, 【text】为内容'),
         'forbidden_users': Item(list, INT_LIST, [], '禁止触发的QQ号'),
         'debug': Item(bool, None, False, '调试模式')
     }
@@ -180,7 +180,7 @@ class PluginConfig(BaseConfig):
     def __init__(self) -> None:
         super().__init__()
         self.proxy: Optional[Proxy] = None
-        self._message_forwarding_format = '《"text":"[QQ] <{name}> {text}","color":"gray"》'
+        self._message_forwarding_format = '《"text":"[{group}] <{name}> {text}","color":"gray"》'
 
     def apply_yaml(self) -> None:
         super().apply_yaml()
@@ -198,8 +198,8 @@ class PluginConfig(BaseConfig):
         }
         self.mcsm_instances_list = list(self.mcsm_instances_data.values())
 
-    def apply_forwarding_format(self, name: str, text: str) -> str:
-        return self._message_forwarding_format.format(name=name, text=text).replace('《', '{').replace('》', '}')
+    def apply_forwarding_format(self, name: str, text: str, group: str) -> str:
+        return self._message_forwarding_format.format(name=name, text=text, group=group).replace('《', '{').replace('》', '}')
 
 
 shared.plugin_config = PluginConfig()
