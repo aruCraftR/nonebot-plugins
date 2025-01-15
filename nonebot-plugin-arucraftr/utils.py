@@ -66,8 +66,10 @@ async def uniform_chat_text(event: MessageEvent, bot: Bot, use_raw=False) -> Uni
             case 'image':    # 图像表情
                 if summary := seg.data.get('summary'):
                     msgs.append(summary)
-                elif url := seg.data.get('url'):
-                    img_urls.append(url)
+                else:
+                    msgs.append('[图片]')
+                # elif url := seg.data.get('url'):
+                #     img_urls.append(url)
             case 'poke':     # 戳一戳
                 if name := seg.data.get('name'):
                     msgs.append(name)

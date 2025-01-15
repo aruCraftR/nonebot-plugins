@@ -79,7 +79,7 @@ class AsyncMcsmAPI:
             case 400:
                 raise McsmAPIParameterError(response.url)
             case 403:
-                raise McsmAPIPermissionError(f'API key: {cls.api_key}\nURL: {response.url}')
+                raise McsmAPIPermissionError(f'API key: {cls.api_key}')
             case 500:
                 raise McsmAPIInternalError()
             case _:
@@ -91,7 +91,7 @@ class AsyncMcsmAPI:
             apikey=cls.api_key,
             uuid=instance_data.instance_id,
             daemonId=instance_data.node_id,
-            command=f'{commands}\n' if isinstance(commands, str) else f'{'\n'.join(commands)}\n'
+            command=f'{commands if isinstance(commands, str) else "\n".join(commands)}\n'
         ))
         cls.check_status_code(response)
         return response.is_success
