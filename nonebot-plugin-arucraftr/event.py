@@ -52,13 +52,13 @@ async def admin_group_message_handler(event: MessageEvent, bot: Bot):
             shared.logger.warning(f'转发消息至{i.instance_aliase}时出现问题: {repr(e)}')
 
 
-main_group_notice.handle()
+@main_group_notice.handle()
 async def main_group_notice_handler(event: NoticeEvent, bot: Bot):
     if isinstance(event, (GroupIncreaseNoticeEvent, GroupDecreaseNoticeEvent)): # 群成员增加通知
         await update_member_data(bot)
 
 
-main_group_request.handle()
+@main_group_request.handle()
 async def main_group_request_handler(event: RequestEvent):
     if isinstance(event, GroupRequestEvent):
         for i in shared.plugin_config.mcsm_instances_list:

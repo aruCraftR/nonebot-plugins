@@ -1,15 +1,15 @@
 
-from nonebot.adapters.onebot.v11 import MessageEvent, NoticeEvent
+from nonebot.adapters.onebot.v11 import MessageEvent, NoticeEvent, RequestEvent
 from nonebot.permission import Permission
 
 from . import shared
 
 
-async def admin_group(event: MessageEvent | NoticeEvent) -> bool:
+async def admin_group(event: MessageEvent | NoticeEvent | RequestEvent) -> bool:
     return hasattr(event, 'group_id') and event.group_id == shared.plugin_config.admin_group # type: ignore
 
 
-async def main_group(event: MessageEvent | NoticeEvent) -> bool:
+async def main_group(event: MessageEvent | NoticeEvent | RequestEvent) -> bool:
     return hasattr(event, 'group_id') and event.group_id == shared.plugin_config.main_group # type: ignore
 
 
