@@ -151,7 +151,7 @@ class PluginConfig(BaseConfig):
         'admin_group': Item(int, None, -1, '管理组群号'),
         'mcsm_api_url': Item(str, HTTPX_STR, 'https://example.com/api', 'MCSM的API地址(xxx/api)'),
         'mcsm_api_key': Item(str, None, 'xxx', 'MCSM的API密钥'),
-        'mcsm_instances': Item(dict, (STR_DICT_KV, Filter(lambda k, v: len(v.split(':') == 2))), {'example': 'node_id:instance_id'}),
+        'mcsm_instances': Item(dict, (STR_DICT_KV, Filter(lambda k, v: len(v.split(':')) == 2)), {'example': 'node_id:instance_id'}),
         'active_days_threshold': Item(int, lambda x: -1 <= x, -1, '群成员活跃判定阈值(距离上次发送消息)'),
         'message_forwarding_format': Item(str, None, '{"text":"[QQ] <【name】> 【text】","color":"gray"}', '消息转发格式, 【name】为用户名, 【text】为内容'),
         'forbidden_users': Item(list, INT_LIST, [], '禁止触发的QQ号'),
