@@ -1,6 +1,6 @@
 
-from nonebot.plugin import on_message, on_notice
-from nonebot.adapters.onebot.v11 import MessageEvent, Bot, GroupIncreaseNoticeEvent, NoticeEvent, GroupDecreaseNoticeEvent, GroupRequestEvent
+from nonebot.plugin import on_message, on_notice, on_request
+from nonebot.adapters.onebot.v11 import MessageEvent, Bot, GroupIncreaseNoticeEvent, NoticeEvent, GroupDecreaseNoticeEvent, GroupRequestEvent, RequestEvent
 
 from .rule import rule_forbidden_id, rule_available_message, rule_from_admin_group, rule_from_main_group
 from .functions import update_admin_id_set, update_member_data
@@ -19,7 +19,7 @@ admin_group_message = on_message(
 )
 
 main_group_notice = on_notice(permission=permission_main_group, priority=5000, block=False)
-
+main_group_request = on_request(permission=permission_main_group, priority=5000, block=False)
 admin_group_notice = on_notice(permission=permission_admin_group, priority=5000, block=False)
 
 @main_group_message.handle()
@@ -56,6 +56,10 @@ main_group_notice.handle()
 async def main_group_notice_handler(event: NoticeEvent, bot: Bot):
     if isinstance(event, (GroupIncreaseNoticeEvent, GroupDecreaseNoticeEvent)): # 群成员增加通知
         await update_member_data(bot)
+
+
+main_group_request.handle()
+async def main_group_request_handler(event: RequestEvent):
     if isinstance(event, GroupRequestEvent):
         for i in shared.plugin_config.mcsm_instances_list:
             try:
